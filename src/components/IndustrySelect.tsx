@@ -48,28 +48,28 @@ export function IndustrySelect({ onSelect }: IndustrySelectProps) {
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0">
+      <PopoverContent className="w-[200px] p-0">
         <Command>
-          <CommandInput placeholder="Search industry..." />
+          <CommandInput placeholder="Search industry..." className="h-9" />
           <CommandEmpty>No industry found.</CommandEmpty>
           <CommandGroup>
             {industries.map((industry) => (
               <CommandItem
                 key={industry.value}
-                value={industry.value}
                 onSelect={(currentValue) => {
-                  setValue(currentValue);
+                  setValue(currentValue === value ? "" : currentValue);
                   onSelect(currentValue);
                   setOpen(false);
                 }}
+                value={industry.value}
               >
+                {industry.label}
                 <Check
                   className={cn(
-                    "mr-2 h-4 w-4",
+                    "ml-auto h-4 w-4",
                     value === industry.value ? "opacity-100" : "opacity-0"
                   )}
                 />
-                {industry.label}
               </CommandItem>
             ))}
           </CommandGroup>
