@@ -280,10 +280,10 @@ const Index = () => {
   const content = selectedIndustry ? contentByIndustry[selectedIndustry as keyof typeof contentByIndustry] : null;
 
   return (
-    <div className="min-h-screen bg-[#F6F4FF] py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#020817] py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-[#1A1F2C] mb-4">
+          <h1 className="text-4xl font-bold text-[#3b7ff5] mb-4">
             Daily Content Dashboard
           </h1>
           <p className="text-[#8E9196] max-w-2xl mx-auto text-lg">
