@@ -280,13 +280,13 @@ const Index = () => {
   const content = selectedIndustry ? contentByIndustry[selectedIndustry as keyof typeof contentByIndustry] : null;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#F6F4FF] py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl font-bold text-[#1A1F2C] mb-4">
             Daily Content Dashboard
           </h1>
-          <p className="text-gray-600 max-w-2xl mx-auto">
+          <p className="text-[#8E9196] max-w-2xl mx-auto text-lg">
             Select your industry to get customized topics, hooks, and tips for your daily emails.
           </p>
         </div>
@@ -296,7 +296,7 @@ const Index = () => {
         </div>
 
         {content && (
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-8 md:grid-cols-3">
             <ContentCard title="3 DAILY TOPICS" items={content.topics} />
             <ContentCard title="3 DAILY HOOKS" items={content.hooks} />
             <ContentCard title="3 DAILY TIPS" items={content.tips} />
@@ -304,7 +304,7 @@ const Index = () => {
         )}
 
         {!content && (
-          <div className="text-center text-gray-500 mt-8">
+          <div className="text-center text-[#8E9196] mt-8 text-lg">
             Select an industry to view customized content
           </div>
         )}

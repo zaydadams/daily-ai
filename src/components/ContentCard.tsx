@@ -13,20 +13,20 @@ interface ContentCardProps {
 
 export function ContentCard({ title, items }: ContentCardProps) {
   return (
-    <Card className="animate-fadeIn">
-      <CardHeader>
-        <CardTitle className="text-lg font-medium">{title}</CardTitle>
+    <Card className="animate-fadeIn bg-white shadow-lg hover:shadow-xl transition-shadow duration-300">
+      <CardHeader className="border-b border-[#E5DEFF] bg-[#F6F4FF]">
+        <CardTitle className="text-lg font-bold text-[#6E59A5]">{title}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <ul className="space-y-4">
+      <CardContent className="p-6">
+        <ul className="space-y-6">
           {items.map((item, index) => (
             <li
               key={index}
-              className="animate-slideIn"
+              className="animate-slideIn hover:bg-[#F6F4FF] p-3 rounded-lg transition-colors duration-200"
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              <p className="text-sm font-medium text-gray-900 mb-1">{item.title}</p>
-              <p className="text-sm text-gray-600">{item.description}</p>
+              <p className="text-base font-medium text-[#1A1F2C] mb-2">{item.title}</p>
+              <p className="text-[#8E9196]">{item.description}</p>
             </li>
           ))}
         </ul>
