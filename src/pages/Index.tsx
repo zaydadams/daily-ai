@@ -22,6 +22,23 @@ const contentByIndustry = {
       "Stay updated with tech trends",
     ],
   },
+  healthcare: {
+    topics: [
+      "Digital Health Innovations",
+      "Patient Care Best Practices",
+      "Healthcare Technology Trends",
+    ],
+    hooks: [
+      "Improve patient outcomes",
+      "Streamline healthcare delivery",
+      "Enhance patient experience",
+    ],
+    tips: [
+      "Implement telemedicine solutions",
+      "Optimize patient scheduling",
+      "Enhance data security",
+    ],
+  },
   finance: {
     topics: [
       "Investment Strategies",
@@ -39,7 +56,57 @@ const contentByIndustry = {
       "Set clear financial goals",
     ],
   },
-  // Add more industries as needed
+  education: {
+    topics: [
+      "E-learning Trends",
+      "Student Engagement Strategies",
+      "Educational Technology",
+    ],
+    hooks: [
+      "Transform learning experiences",
+      "Boost student engagement",
+      "Modernize education delivery",
+    ],
+    tips: [
+      "Implement hybrid learning",
+      "Use interactive tools",
+      "Track student progress",
+    ],
+  },
+  retail: {
+    topics: [
+      "E-commerce Trends",
+      "Customer Experience",
+      "Retail Technology",
+    ],
+    hooks: [
+      "Boost online sales",
+      "Enhance customer loyalty",
+      "Streamline operations",
+    ],
+    tips: [
+      "Optimize your website",
+      "Improve inventory management",
+      "Personalize customer experience",
+    ],
+  },
+  manufacturing: {
+    topics: [
+      "Industry 4.0",
+      "Supply Chain Innovation",
+      "Sustainable Manufacturing",
+    ],
+    hooks: [
+      "Optimize production",
+      "Reduce operational costs",
+      "Improve quality control",
+    ],
+    tips: [
+      "Implement IoT solutions",
+      "Streamline workflows",
+      "Monitor equipment health",
+    ],
+  },
 };
 
 const Index = () => {
