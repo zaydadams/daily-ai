@@ -9,6 +9,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandList,
 } from "@/components/ui/command";
 import {
   Popover,
@@ -51,28 +52,30 @@ export function IndustrySelect({ onSelect }: IndustrySelectProps) {
       <PopoverContent className="w-[200px] p-0">
         <Command>
           <CommandInput placeholder="Search industry..." className="h-9" />
-          <CommandEmpty>No industry found.</CommandEmpty>
-          <CommandGroup>
-            {industries.map((industry) => (
-              <CommandItem
-                key={industry.value}
-                onSelect={(currentValue) => {
-                  setValue(currentValue === value ? "" : currentValue);
-                  onSelect(currentValue);
-                  setOpen(false);
-                }}
-                value={industry.value}
-              >
-                {industry.label}
-                <Check
-                  className={cn(
-                    "ml-auto h-4 w-4",
-                    value === industry.value ? "opacity-100" : "opacity-0"
-                  )}
-                />
-              </CommandItem>
-            ))}
-          </CommandGroup>
+          <CommandList>
+            <CommandEmpty>No industry found.</CommandEmpty>
+            <CommandGroup>
+              {industries.map((industry) => (
+                <CommandItem
+                  key={industry.value}
+                  onSelect={(currentValue) => {
+                    setValue(currentValue === value ? "" : currentValue);
+                    onSelect(currentValue);
+                    setOpen(false);
+                  }}
+                  value={industry.value}
+                >
+                  {industry.label}
+                  <Check
+                    className={cn(
+                      "ml-auto h-4 w-4",
+                      value === industry.value ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
