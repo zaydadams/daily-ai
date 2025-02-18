@@ -5,27 +5,39 @@ import { ContentCard } from "@/components/ContentCard";
 import { fetchWordPressPosts } from "@/services/WordPressService";
 import { useToast } from "@/components/ui/use-toast";
 
-interface ContentItem {
-  title: string;
-  description: string;
-}
-
-interface GeneratedContent {
-  topics: ContentItem[];
-  hooks: ContentItem[];
-  tips: ContentItem[];
+interface WordPressContent {
+  topics: Array<{ title: string; description: string }>;
+  hooks: Array<{ title: string; description: string }>;
+  tips: Array<{ title: string; description: string }>;
 }
 
 const Index = () => {
   const [selectedIndustry, setSelectedIndustry] = useState("");
-  const [content, setContent] = useState<GeneratedContent | null>(null);
+  const [content, setContent] = useState<WordPressContent | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     const loadWordPressContent = async () => {
       try {
-        const generatedContent = await fetchWordPressPosts(selectedIndustry);
-        setContent(generatedContent);
+        const posts = await fetchWordPressPosts();
+        
+        // Transform WordPress posts into our content format
+        const transformedContent: WordPressContent = {
+          topics: posts.slice(0, 3).map(post => ({
+            title: post.title.rendered.replace(/^&#8211;\s*/, ''),
+            description: `→ ${post.excerpt.rendered.replace(/<\/?p>/g, '').slice(0, 100)}...`
+          })),
+          hooks: posts.slice(3, 6).map(post => ({
+            title: post.title.rendered.replace(/^&#8211;\s*/, ''),
+            description: `→ ${post.excerpt.rendered.replace(/<\/?p>/g, '').slice(0, 100)}...`
+          })),
+          tips: posts.slice(6, 9).map(post => ({
+            title: post.title.rendered.replace(/^&#8211;\s*/, ''),
+            description: `→ ${post.excerpt.rendered.replace(/<\/?p>/g, '').slice(0, 100)}...`
+          }))
+        };
+
+        setContent(transformedContent);
       } catch (error) {
         console.error('Error loading WordPress content:', error);
         toast({
