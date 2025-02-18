@@ -1,5 +1,5 @@
 
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from "@/lib/supabase";
 
 interface WordPressPost {
   id: number;
@@ -18,11 +18,6 @@ interface GeneratedContent {
   hooks: ContentItem[];
   tips: ContentItem[];
 }
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
 
 export const fetchWordPressPosts = async (industry: string): Promise<GeneratedContent> => {
   try {
@@ -57,9 +52,13 @@ export const fetchWordPressPosts = async (industry: string): Promise<GeneratedCo
     }
 
     // Fallback to OpenAI
-    const { data } = await supabase.functions.invoke('generate-industry-content', {
+    const { data, error } = await supabase.functions.invoke('generate-industry-content', {
       body: { industry }
     });
+
+    if (error) {
+      throw error;
+    }
 
     return data as GeneratedContent;
   } catch (error) {
