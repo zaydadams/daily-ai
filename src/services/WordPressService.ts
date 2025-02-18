@@ -1,4 +1,6 @@
 
+import { createClient } from '@supabase/supabase-js';
+
 interface WordPressPost {
   id: number;
   title: { rendered: string };
@@ -6,49 +8,62 @@ interface WordPressPost {
   content: { rendered: string };
 }
 
-const industryKeywords = {
-  technology: ['tech', 'software', 'digital', 'online', 'web', 'app', 'computer', 'it', 'technology', 'startup', 'saas', 'platform'],
-  healthcare: ['health', 'medical', 'patient', 'doctor', 'hospital', 'wellness', 'care', 'clinic', 'therapy', 'treatment'],
-  finance: ['finance', 'bank', 'money', 'investment', 'trading', 'financial', 'business', 'market', 'stock', 'wealth'],
-  education: ['education', 'school', 'learning', 'student', 'teach', 'course', 'training', 'academic', 'study', 'college'],
-  retail: ['retail', 'shop', 'store', 'customer', 'product', 'sale', 'ecommerce', 'marketing', 'brand', 'consumer'],
-  manufacturing: ['manufacturing', 'factory', 'production', 'industrial', 'supply', 'chain', 'quality', 'process', 'operation']
-};
+interface ContentItem {
+  title: string;
+  description: string;
+}
 
-const matchPostToIndustry = (post: WordPressPost, industry: string): boolean => {
-  const keywords = industryKeywords[industry as keyof typeof industryKeywords] || [];
-  const postContent = (
-    post.title.rendered.toLowerCase() + 
-    ' ' + 
-    post.excerpt.rendered.toLowerCase() + 
-    ' ' + 
-    post.content.rendered.toLowerCase()
-  );
-  
-  return keywords.some(keyword => postContent.includes(keyword));
-};
+interface GeneratedContent {
+  topics: ContentItem[];
+  hooks: ContentItem[];
+  tips: ContentItem[];
+}
 
-export const fetchWordPressPosts = async (selectedIndustry: string) => {
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL || '',
+  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+);
+
+export const fetchWordPressPosts = async (industry: string): Promise<GeneratedContent> => {
   try {
-    // Fetch more posts initially to ensure we have enough after filtering
+    // First try WordPress
     const response = await fetch('https://writer.expert/wp-json/wp/v2/posts?per_page=30');
     if (!response.ok) {
       throw new Error('Failed to fetch posts');
     }
     
     const posts: WordPressPost[] = await response.json();
+    const industryPosts = posts.filter(post => 
+      post.title.rendered.toLowerCase().includes(industry.toLowerCase()) ||
+      post.content.rendered.toLowerCase().includes(industry.toLowerCase()) ||
+      post.excerpt.rendered.toLowerCase().includes(industry.toLowerCase())
+    );
     
-    // Filter posts by industry
-    const industryPosts = posts.filter(post => matchPostToIndustry(post, selectedIndustry));
-    
-    // If we don't have enough industry-specific posts, fill with general posts
-    const finalPosts = industryPosts.length >= 9 
-      ? industryPosts.slice(0, 9) 
-      : [...industryPosts, ...posts.filter(post => !matchPostToIndustry(post, selectedIndustry))].slice(0, 9);
+    if (industryPosts.length >= 9) {
+      return {
+        topics: industryPosts.slice(0, 3).map(post => ({
+          title: post.title.rendered.replace(/^&#8211;\s*/, ''),
+          description: `→ ${post.excerpt.rendered.replace(/<\/?p>/g, '').slice(0, 100)}...`
+        })),
+        hooks: industryPosts.slice(3, 6).map(post => ({
+          title: post.title.rendered.replace(/^&#8211;\s*/, ''),
+          description: `→ ${post.excerpt.rendered.replace(/<\/?p>/g, '').slice(0, 100)}...`
+        })),
+        tips: industryPosts.slice(6, 9).map(post => ({
+          title: post.title.rendered.replace(/^&#8211;\s*/, ''),
+          description: `→ ${post.excerpt.rendered.replace(/<\/?p>/g, '').slice(0, 100)}...`
+        }))
+      };
+    }
 
-    return finalPosts;
+    // Fallback to OpenAI
+    const { data } = await supabase.functions.invoke('generate-industry-content', {
+      body: { industry }
+    });
+
+    return data as GeneratedContent;
   } catch (error) {
-    console.error('Error fetching WordPress posts:', error);
+    console.error('Error fetching content:', error);
     throw error;
   }
 };
