@@ -19,7 +19,7 @@ const Index = () => {
   useEffect(() => {
     const loadWordPressContent = async () => {
       try {
-        const posts = await fetchWordPressPosts();
+        const posts = await fetchWordPressPosts(selectedIndustry);
         
         // Transform WordPress posts into our content format
         const transformedContent: WordPressContent = {
