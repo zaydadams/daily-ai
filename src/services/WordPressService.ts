@@ -43,8 +43,8 @@ const cleanContent = (content: GeneratedContent): GeneratedContent => {
     // If we have less than 3 items, add placeholder items
     while (cleanedItems.length < 3) {
       cleanedItems.push({
-        title: `Example ${cleanedItems.length + 1}`,
-        description: `Sample description for item ${cleanedItems.length + 1}`
+        title: `Example heading ${cleanedItems.length + 1}`,
+        description: `How to effectively use this heading in your content`
       });
     }
 

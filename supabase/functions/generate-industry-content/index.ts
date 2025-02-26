@@ -28,11 +28,28 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are an expert content creator. Generate content for the specified industry in this format: First 3 items are daily topics, next 3 are hooks, and last 3 are tips. Each should be relevant to the industry.'
+            content: 'You are a content strategy expert. For each section (topics, hooks, tips), generate exactly 3 items. Each item should have a clear heading and a description of how to use that heading effectively.'
           },
           {
             role: 'user',
-            content: `Generate 9 items for the ${industry} industry: 3 daily topics, 3 hooks, and 3 tips. Keep each item's title under 60 characters and description under 100 characters.`
+            content: `Generate 9 content items for the ${industry} industry, organized as follows:
+            
+3 DAILY TOPICS: Generate 3 topic headings with descriptions showing how to use each topic effectively.
+Example format:
+Title: "Share a personal milestone"
+Description: "Celebrate and invite others to join in your success"
+
+3 DAILY HOOKS: Generate 3 hook headings with descriptions showing how to use each hook effectively.
+Example format:
+Title: "The minimalist approach to productivity"
+Description: "Present a streamlined method that simplifies complex processes"
+
+3 DAILY TIPS: Generate 3 tip headings with descriptions showing how to use each tip effectively.
+Example format:
+Title: "Use storytelling techniques"
+Description: "Engage your audience with a beginning, middle, and end"
+
+Make sure each section has exactly 3 items, each with a clear heading and practical description of how to use it.`
           }
         ],
       }),
@@ -42,19 +59,22 @@ serve(async (req) => {
     const content = data.choices[0].message.content;
 
     // Parse the content into structured format
-    const lines = content.split('\n').filter(line => line.trim());
-    const allItems = lines.map(line => {
-      const [title, ...descParts] = line.replace(/^\d+\.\s*/, '').split(':');
-      return {
-        title: title.trim(),
-        description: descParts.join(':').trim()
-      };
+    const sections = content.split(/3 DAILY (?:TOPICS|HOOKS|TIPS):/i);
+    const parsedSections = sections.slice(1).map(section => {
+      const items = section.trim().split('\n').filter(line => line.trim());
+      return items.map(item => {
+        const [title, description] = item.split(/Description:|→/).map(s => s.trim());
+        return {
+          title: title.replace(/^Title:\s*/, '').trim(),
+          description: description ? description : 'How to effectively use this in your content'
+        };
+      });
     });
 
     const result = {
-      topics: allItems.slice(0, 3),
-      hooks: allItems.slice(3, 6),
-      tips: allItems.slice(6, 9)
+      topics: parsedSections[0]?.slice(0, 3) || [],
+      hooks: parsedSections[1]?.slice(0, 3) || [],
+      tips: parsedSections[2]?.slice(0, 3) || [],
     };
 
     return new Response(JSON.stringify(result), {
