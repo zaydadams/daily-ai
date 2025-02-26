@@ -30,32 +30,10 @@ const cleanContent = (content: GeneratedContent): GeneratedContent => {
       .trim()
   });
 
-  const ensureThreeItems = (items: ContentItem[]): ContentItem[] => {
-    const cleanedItems = items
-      .map(cleanItem)
-      .filter(item => 
-        item.title && 
-        !item.title.includes('Daily Topics') && 
-        !item.title.includes('Hooks') && 
-        !item.title.includes('Tips')
-      );
-
-    // If we have less than 3 items, add placeholder items
-    while (cleanedItems.length < 3) {
-      cleanedItems.push({
-        title: `Example heading ${cleanedItems.length + 1}`,
-        description: `How to effectively use this heading in your content`
-      });
-    }
-
-    // Return exactly 3 items
-    return cleanedItems.slice(0, 3);
-  };
-
   return {
-    topics: ensureThreeItems(content.topics),
-    hooks: ensureThreeItems(content.hooks),
-    tips: ensureThreeItems(content.tips),
+    topics: content.topics.map(cleanItem).filter(item => item.title && !item.title.includes('Daily Topics')),
+    hooks: content.hooks.map(cleanItem).filter(item => item.title && !item.title.includes('Hooks')),
+    tips: content.tips.map(cleanItem).filter(item => item.title && !item.title.includes('Tips')),
   };
 };
 
