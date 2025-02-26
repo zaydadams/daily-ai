@@ -9,24 +9,34 @@ interface ContentItem {
 interface ContentCardProps {
   title: string;
   items: ContentItem[];
+  className?: string;
+  style?: React.CSSProperties;
 }
 
-export function ContentCard({ title, items }: ContentCardProps) {
+export function ContentCard({ title, items, className, style }: ContentCardProps) {
   return (
-    <Card className="animate-fadeIn bg-white shadow-lg hover:shadow-xl transition-shadow duration-300">
+    <Card 
+      className={`transform transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${className}`}
+      style={style}
+    >
       <CardHeader className="border-b border-[#E5DEFF] bg-[#F6F4FF]">
-        <CardTitle className="text-lg font-bold text-[#6E59A5]">{title}</CardTitle>
+        <CardTitle className="text-lg font-bold text-[#6E59A5] flex items-center justify-center">
+          {title}
+        </CardTitle>
       </CardHeader>
       <CardContent className="p-6">
         <ul className="space-y-6">
           {items.map((item, index) => (
             <li
               key={index}
-              className="animate-slideIn hover:bg-[#F6F4FF] p-3 rounded-lg transition-colors duration-200"
-              style={{ animationDelay: `${index * 100}ms` }}
+              className="transform transition-all duration-200 hover:scale-[1.02] hover:bg-[#F6F4FF] p-4 rounded-lg cursor-pointer"
             >
-              <p className="text-base font-medium text-[#1A1F2C] mb-2">{item.title}</p>
-              <p className="text-[#8E9196]">{item.description}</p>
+              <p className="text-base font-medium text-[#1A1F2C] mb-2 line-clamp-2">
+                {item.title}
+              </p>
+              <p className="text-[#8E9196] text-sm line-clamp-3">
+                {item.description}
+              </p>
             </li>
           ))}
         </ul>
