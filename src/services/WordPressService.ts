@@ -19,6 +19,24 @@ interface GeneratedContent {
   tips: ContentItem[];
 }
 
+const cleanContent = (content: GeneratedContent): GeneratedContent => {
+  const cleanItem = (item: ContentItem): ContentItem => ({
+    title: item.title
+      .replace(/^###\s+/, '') // Remove markdown headers
+      .replace(/^\*\*|\*\*$/g, '') // Remove markdown bold
+      .trim(),
+    description: item.description
+      .replace(/^→\s*/, '') // Remove arrow if it exists
+      .trim()
+  });
+
+  return {
+    topics: content.topics.map(cleanItem).filter(item => item.title && !item.title.includes('Daily Topics')),
+    hooks: content.hooks.map(cleanItem).filter(item => item.title && !item.title.includes('Hooks')),
+    tips: content.tips.map(cleanItem).filter(item => item.title && !item.title.includes('Tips')),
+  };
+};
+
 export const fetchWordPressPosts = async (industry: string): Promise<GeneratedContent> => {
   try {
     console.log('Fetching WordPress posts for industry:', industry);
@@ -72,7 +90,8 @@ export const fetchWordPressPosts = async (industry: string): Promise<GeneratedCo
       throw error;
     }
 
-    return data as GeneratedContent;
+    // Clean the AI-generated content before returning
+    return cleanContent(data as GeneratedContent);
   } catch (error) {
     console.error('Error fetching content:', error);
     throw error;
