@@ -5,7 +5,6 @@ import { ContentCard } from "@/components/ContentCard";
 import { fetchWordPressPosts } from "@/services/WordPressService";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
 
 interface ContentItem {
@@ -22,9 +21,25 @@ interface GeneratedContent {
 const Index = () => {
   const [selectedIndustry, setSelectedIndustry] = useState("");
   const [content, setContent] = useState<GeneratedContent | null>(null);
-  const [email, setEmail] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Get the current user's email
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email) {
+        setUserEmail(session.user.email);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUserEmail(session?.user?.email ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     const loadWordPressContent = async () => {
@@ -53,10 +68,12 @@ const Index = () => {
   };
 
   const handleSubscribe = async () => {
-    if (!email || !selectedIndustry) {
+    if (!userEmail || !selectedIndustry) {
       toast({
         title: "Error",
-        description: "Please enter your email and select an industry first.",
+        description: !userEmail 
+          ? "Please sign in to subscribe to updates." 
+          : "Please select an industry first.",
         variant: "destructive",
       });
       return;
@@ -69,15 +86,15 @@ const Index = () => {
         .from('user_industry_preferences')
         .upsert([
           {
-            email,
+            email: userEmail,
             industry: selectedIndustry,
-            user_id: email, // Using email as user_id for simplicity
+            user_id: userEmail,
           }
         ]);
 
       // Subscribe to Mailchimp
       const { error } = await supabase.functions.invoke('mailchimp-subscribe', {
-        body: { email, industry: selectedIndustry },
+        body: { email: userEmail, industry: selectedIndustry },
       });
 
       if (error) throw error;
@@ -106,49 +123,48 @@ const Index = () => {
             Daily Content Dashboard
           </h1>
           <p className="text-[#8E9196] max-w-2xl mx-auto text-lg">
-            Select your industry to get customized topics, hooks, and tips from writer.expert
+            Select your industry to get customized topics, hooks, and tips
           </p>
         </div>
 
         <div className="mb-8 max-w-md mx-auto space-y-4">
           <IndustrySelect onSelect={handleIndustrySelect} />
           
-          {selectedIndustry && (
-            <div className="flex gap-2 animate-fade-in">
-              <Input
-                type="email"
-                placeholder="Enter your email for daily updates"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="flex-1"
-              />
+          {selectedIndustry && userEmail && (
+            <div className="flex justify-center animate-fade-in">
               <Button 
                 onClick={handleSubscribe}
-                disabled={isSubscribing || !email}
-                className="whitespace-nowrap bg-[#3b7ff5] hover:bg-[#2b6fe5]"
+                disabled={isSubscribing}
+                className="bg-[#3b7ff5] hover:bg-[#2b6fe5]"
               >
-                {isSubscribing ? "Subscribing..." : "Get Daily Updates"}
+                {isSubscribing ? "Subscribing..." : "Subscribe to Daily Updates"}
               </Button>
             </div>
+          )}
+
+          {selectedIndustry && !userEmail && (
+            <p className="text-center text-[#8E9196]">
+              Please sign in to subscribe to daily updates
+            </p>
           )}
         </div>
 
         {content && (
           <div className="grid gap-8 md:grid-cols-3">
             <ContentCard 
-              title="📝 DAILY TOPICS" 
+              title="3 DAILY TOPICS" 
               items={content.topics}
               className="animate-fade-in" 
               style={{ animationDelay: '0ms' }}
             />
             <ContentCard 
-              title="🎯 DAILY HOOKS" 
+              title="3 DAILY HOOKS" 
               items={content.hooks}
               className="animate-fade-in" 
               style={{ animationDelay: '150ms' }}
             />
             <ContentCard 
-              title="💡 DAILY TIPS" 
+              title="3 DAILY TIPS" 
               items={content.tips}
               className="animate-fade-in" 
               style={{ animationDelay: '300ms' }}

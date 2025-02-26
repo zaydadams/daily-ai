@@ -25,16 +25,16 @@ export function ContentCard({ title, items, className, style }: ContentCardProps
         </CardTitle>
       </CardHeader>
       <CardContent className="p-6">
-        <ul className="space-y-6">
+        <ul className="space-y-8">
           {items.map((item, index) => (
             <li
               key={index}
               className="transform transition-all duration-200 hover:scale-[1.02] hover:bg-[#F6F4FF] p-4 rounded-lg cursor-pointer"
             >
-              <p className="text-base font-medium text-[#1A1F2C] mb-2 line-clamp-2">
+              <p className="text-base font-medium text-[#1A1F2C] mb-3">
                 {item.title}
               </p>
-              <p className="text-[#8E9196] text-sm line-clamp-3">
+              <p className="text-[#8E9196] text-sm">
                 {item.description}
               </p>
             </li>
