@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 const Index = () => {
   const [selectedIndustry, setSelectedIndustry] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
+  const [isSendingNow, setIsSendingNow] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState("bullet-points-style-x-style");
   const [deliveryTime, setDeliveryTime] = useState("09:00");
@@ -100,6 +101,50 @@ const Index = () => {
     }
   };
 
+  const handleSendEmailNow = async () => {
+    if (!userEmail || !selectedIndustry) {
+      toast({
+        title: "Error",
+        description: !userEmail 
+          ? "Please sign in to send email." 
+          : "Please select an industry first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingNow(true);
+    try {
+      // Call the same function but indicate it's an immediate send
+      const { error } = await supabase.functions.invoke('mailchimp-subscribe', {
+        body: { 
+          email: userEmail, 
+          industry: selectedIndustry,
+          template: selectedTemplate,
+          deliveryTime: deliveryTime,
+          timezone: timezone,
+          sendNow: true
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Email Sent!",
+        description: "Content has been generated and sent to your email.",
+      });
+    } catch (error) {
+      console.error('Error sending email now:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send email. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingNow(false);
+    }
+  };
+
   // Helper to get format and style parts
   const getTemplateParts = () => {
     if (selectedTemplate.includes("-style-")) {
@@ -178,13 +223,23 @@ const Index = () => {
             </Card>
 
             {userEmail ? (
-              <Button 
-                onClick={handleSubscribe}
-                disabled={isSubscribing || !selectedIndustry}
-                className="w-full bg-[#3b7ff5] hover:bg-[#2b6fe5]"
-              >
-                {isSubscribing ? "Saving preferences..." : "Save Preferences"}
-              </Button>
+              <div className="space-y-4">
+                <Button 
+                  onClick={handleSubscribe}
+                  disabled={isSubscribing || !selectedIndustry}
+                  className="w-full bg-[#3b7ff5] hover:bg-[#2b6fe5]"
+                >
+                  {isSubscribing ? "Saving preferences..." : "Save Preferences"}
+                </Button>
+                
+                <Button 
+                  onClick={handleSendEmailNow}
+                  disabled={isSendingNow || !selectedIndustry}
+                  className="w-full bg-[#22c55e] hover:bg-[#16a34a]"
+                >
+                  {isSendingNow ? "Sending email..." : "Send Email Now"}
+                </Button>
+              </div>
             ) : (
               <p className="text-center text-[#8E9196]">
                 Please sign in to save your preferences
