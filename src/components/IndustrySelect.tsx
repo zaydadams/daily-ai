@@ -10,24 +10,24 @@ interface IndustrySelectProps {
 export function IndustrySelect({ onSelect }: IndustrySelectProps) {
   const [value, setValue] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (value.trim()) {
-      onSelect(value.trim());
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setValue(e.target.value);
+    if (e.target.value.trim()) {
+      onSelect(e.target.value.trim());
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2">
+    <div className="mt-1">
       <Input
-        placeholder="Enter your industry..."
+        placeholder="Enter your industry (e.g., Marketing, Real Estate, Finance)"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="flex-1"
+        onChange={handleChange}
+        className="w-full"
       />
-      <Button type="submit" disabled={!value.trim()}>
-        Get Content
-      </Button>
-    </form>
+      <p className="text-sm text-gray-500 mt-1">
+        We'll generate content specifically tailored to your industry.
+      </p>
+    </div>
   );
 }
