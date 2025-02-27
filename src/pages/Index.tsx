@@ -15,7 +15,7 @@ const Index = () => {
   const [selectedIndustry, setSelectedIndustry] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState("bullet-points");
+  const [selectedTemplate, setSelectedTemplate] = useState("bullet-points-style-x-style");
   const [deliveryTime, setDeliveryTime] = useState("09:00");
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [activeTab, setActiveTab] = useState("preferences");
@@ -98,6 +98,15 @@ const Index = () => {
     } finally {
       setIsSubscribing(false);
     }
+  };
+
+  // Helper to get format and style parts
+  const getTemplateParts = () => {
+    if (selectedTemplate.includes("-style-")) {
+      const [format, style] = selectedTemplate.split("-style-");
+      return { format, style };
+    }
+    return { format: selectedTemplate, style: "x-style" };
   };
 
   return (
@@ -190,7 +199,8 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <div className="bg-white rounded-lg p-6 shadow-inner">
-                  {selectedTemplate === "bullet-points" && (
+                  {/* X.com style with bullet points */}
+                  {getTemplateParts().format === "bullet-points" && getTemplateParts().style === "x-style" && (
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold text-gray-800">The hidden cost of cheap clients:</h3>
                       <ul className="list-disc pl-6 space-y-2">
@@ -204,7 +214,25 @@ const Index = () => {
                     </div>
                   )}
 
-                  {selectedTemplate === "numbered-list" && (
+                  {/* LinkedIn style with bullet points */}
+                  {getTemplateParts().format === "bullet-points" && getTemplateParts().style === "linkedin-style" && (
+                    <div className="space-y-4">
+                      <h3 className="text-xl font-bold text-gray-800">Why Quality Clients Are Essential for Business Growth</h3>
+                      <p className="text-gray-600">After 10+ years working with hundreds of clients, I've noticed a consistent pattern that impacts profitability:</p>
+                      <ul className="list-disc pl-6 space-y-2">
+                        <li>Low-paying clients often require more meeting time and hand-holding</li>
+                        <li>They typically request multiple rounds of revisions</li>
+                        <li>They create unnecessary interpersonal complications</li>
+                        <li>They frequently ask for "just one more thing" outside the agreement</li>
+                        <li>They tend to have higher turnover, creating business instability</li>
+                      </ul>
+                      <p className="font-medium text-gray-800 pt-2">The clients who pay you the least will inevitably cost you the most in time, energy, and opportunity cost. What's been your experience?</p>
+                      <p className="text-gray-500 text-sm pt-2">#BusinessStrategy #ClientRelationships #Entrepreneurship</p>
+                    </div>
+                  )}
+
+                  {/* X.com style with numbered list */}
+                  {getTemplateParts().format === "numbered-list" && getTemplateParts().style === "x-style" && (
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold text-gray-800">5 Steps to Effective Time Management:</h3>
                       <ol className="list-decimal pl-6 space-y-2">
@@ -218,7 +246,25 @@ const Index = () => {
                     </div>
                   )}
 
-                  {selectedTemplate === "tips-format" && (
+                  {/* LinkedIn style with numbered list */}
+                  {getTemplateParts().format === "numbered-list" && getTemplateParts().style === "linkedin-style" && (
+                    <div className="space-y-4">
+                      <h3 className="text-xl font-bold text-gray-800">The 5-Step Productivity Framework That Transformed My Business</h3>
+                      <p className="text-gray-600">After struggling with overwhelm and burnout for years, I developed this system that's helped me and hundreds of my clients take back control of our time:</p>
+                      <ol className="list-decimal pl-6 space-y-2">
+                        <li><strong>Identify your high-leverage activities</strong> - Focus first on the 20% of work that delivers 80% of your results</li>
+                        <li><strong>Use task decomposition</strong> - Break complex projects into concrete, actionable steps of 25-90 minutes each</li>
+                        <li><strong>Create distraction-free environments</strong> - Turn off notifications, use focus apps, and communicate boundaries</li>
+                        <li><strong>Implement strategic breaks</strong> - Use the Pomodoro technique or similar to maintain peak mental performance</li>
+                        <li><strong>Conduct weekly reviews</strong> - Reflect on what worked and what didn't to continuously refine your approach</li>
+                      </ol>
+                      <p className="font-medium text-gray-800 pt-2">The most successful professionals aren't naturally more productive - they've simply built better systems. What productivity techniques have you found most effective?</p>
+                      <p className="text-gray-500 text-sm pt-2">#ProductivityTips #TimeManagement #WorkSmarter</p>
+                    </div>
+                  )}
+
+                  {/* X.com style with tips format */}
+                  {getTemplateParts().format === "tips-format" && getTemplateParts().style === "x-style" && (
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold text-gray-800">QUICK TIP:</h3>
                       <p className="text-gray-800">Instead of scheduling back-to-back meetings, build in 10-minute buffers between each one.</p>
@@ -229,6 +275,121 @@ const Index = () => {
                         <span className="block pl-4">✓ Take a mental break</span>
                       </p>
                       <p className="font-medium text-gray-800 pt-2">Small buffers create massive productivity gains.</p>
+                    </div>
+                  )}
+
+                  {/* LinkedIn style with tips format */}
+                  {getTemplateParts().format === "tips-format" && getTemplateParts().style === "linkedin-style" && (
+                    <div className="space-y-4">
+                      <h3 className="text-xl font-bold text-gray-800">One Meeting Hack That Saved My Sanity</h3>
+                      <p className="text-gray-600">After years of feeling constantly rushed and overwhelmed, I discovered a simple calendar trick that's been a game-changer for my productivity and mental wellbeing:</p>
+                      <p className="text-gray-800 font-medium mt-4">PRODUCTIVITY TIP:</p>
+                      <p className="text-gray-800">Stop scheduling meetings back-to-back. Instead, add 10-15 minute buffers between every meeting on your calendar.</p>
+                      <p className="text-gray-800 mt-3">These intentional gaps allow you to:
+                        <span className="block pl-4 pt-2">✓ Document key takeaways while they're fresh in your mind</span>
+                        <span className="block pl-4">✓ Review materials for your upcoming conversation</span>
+                        <span className="block pl-4">✓ Respond to time-sensitive communications</span>
+                        <span className="block pl-4">✓ Reset mentally to be fully present in your next interaction</span>
+                        <span className="block pl-4">✓ Handle basic needs like grabbing water or taking a bio break</span>
+                      </p>
+                      <p className="font-medium text-gray-800 pt-3">I've found that these small breathers between meetings have dramatically improved my meeting effectiveness, reduced stress, and actually allowed me to be more present with clients and team members.</p>
+                      <p className="text-gray-600 pt-2">What meeting strategies have made the biggest difference for you?</p>
+                      <p className="text-gray-500 text-sm pt-2">#MeetingProductivity #WorkLifeBalance #TimeManagement</p>
+                    </div>
+                  )}
+
+                  {/* Thought Leadership style examples */}
+                  {getTemplateParts().style === "thought-leadership" && (
+                    <div className="space-y-4">
+                      <h3 className="text-xl font-bold text-gray-800">The 80/20 Rule of Client Selection Most Businesses Get Wrong</h3>
+                      <p className="text-gray-600">Industry conventional wisdom has it backward. The focus shouldn't be on getting MORE clients - it should be on identifying and serving the RIGHT clients.</p>
+                      
+                      {getTemplateParts().format === "bullet-points" && (
+                        <ul className="list-disc pl-6 space-y-2 mt-4">
+                          <li>Cheap clients don't just pay less - they cost more in emotional labor</li>
+                          <li>Premium clients who value expertise make decisions faster</li>
+                          <li>A portfolio of ideal clients creates compound growth</li>
+                          <li>One toxic client can undo the profit of three good ones</li>
+                          <li>Client selection is your most important business filtering system</li>
+                        </ul>
+                      )}
+                      
+                      {getTemplateParts().format === "numbered-list" && (
+                        <ol className="list-decimal pl-6 space-y-2 mt-4">
+                          <li><strong>Price is a filtering mechanism</strong> - Use it strategically to pre-qualify</li>
+                          <li><strong>Opportunity cost is real</strong> - Every bad client blocks a potential great one</li>
+                          <li><strong>Document red flags</strong> - Create a formal system to identify problem clients early</li>
+                          <li><strong>Gracefully exit unprofitable relationships</strong> - Have a referral network ready</li>
+                          <li><strong>Focus on lifetime value</strong> - Create experiences worth 10x what you charge</li>
+                        </ol>
+                      )}
+                      
+                      {getTemplateParts().format === "tips-format" && (
+                        <div className="mt-4">
+                          <p className="font-medium text-gray-800">THE CONTRARIAN VIEW:</p>
+                          <p className="text-gray-800">Firing your worst client will make you more money than landing a new one.</p>
+                          <p className="text-gray-800 mt-3">Here's why:
+                            <span className="block pl-4 pt-2">✓ You instantly reclaim hours of unpaid emotional labor</span>
+                            <span className="block pl-4">✓ Your team's morale and productivity improves</span>
+                            <span className="block pl-4">✓ You create space to serve existing clients better</span>
+                            <span className="block pl-4">✓ You open capacity for ideal clients to find you</span>
+                            <span className="block pl-4">✓ You regain strategic focus instead of managing problems</span>
+                          </p>
+                        </div>
+                      )}
+                      
+                      <p className="font-medium text-gray-800 pt-3">The most successful businesses aren't the ones with the most clients - they're the ones with the best clients. This distinction makes all the difference between struggling and thriving.</p>
+                    </div>
+                  )}
+
+                  {/* Newsletter style examples */}
+                  {getTemplateParts().style === "newsletter-style" && (
+                    <div className="space-y-4">
+                      <h3 className="text-xl font-bold text-gray-800">Hey there,</h3>
+                      <p className="text-gray-600">I made a costly mistake last week that I thought might help you avoid the same pitfall...</p>
+                      
+                      {getTemplateParts().format === "bullet-points" && (
+                        <div className="mt-3">
+                          <p className="text-gray-800">I said yes to a client project that had several red flags I chose to ignore:</p>
+                          <ul className="list-disc pl-6 space-y-2 mt-2">
+                            <li>They haggled over my rate from the very first call</li>
+                            <li>They wanted multiple revisions to the proposal</li>
+                            <li>They had gone through three other consultants this year</li>
+                            <li>They needed everything "urgently"</li>
+                            <li>They refused to follow my onboarding process</li>
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {getTemplateParts().format === "numbered-list" && (
+                        <div className="mt-3">
+                          <p className="text-gray-800">Here's what I've learned about protecting your time and energy:</p>
+                          <ol className="list-decimal pl-6 space-y-2 mt-2">
+                            <li>Trust your gut when something feels off about a prospect</li>
+                            <li>Implement a client filtering system and stick to it</li>
+                            <li>Charge enough that you can provide exceptional service</li>
+                            <li>Set clear boundaries from the very first interaction</li>
+                            <li>Remember that saying no to the wrong clients makes room for the right ones</li>
+                          </ol>
+                        </div>
+                      )}
+                      
+                      {getTemplateParts().format === "tips-format" && (
+                        <div className="mt-3">
+                          <p className="text-gray-800">After that experience, here's my new rule:</p>
+                          <p className="font-medium text-gray-800 mt-2">THE "SLEEP ON IT" RULE:</p>
+                          <p className="text-gray-800">Never agree to a new project during the first call. Always take at least 24 hours to consider if it's truly a good fit.</p>
+                          <p className="text-gray-800 mt-3">This simple pause allows you to:
+                            <span className="block pl-4 pt-2">✓ Process any subtle red flags you noticed</span>
+                            <span className="block pl-4">✓ Consider how the work fits into your current commitments</span>
+                            <span className="block pl-4">✓ Check if you're saying yes out of excitement or desperation</span>
+                            <span className="block pl-4">✓ Craft a thoughtful proposal rather than a rushed one</span>
+                          </p>
+                        </div>
+                      )}
+                      
+                      <p className="text-gray-800 pt-3">I hope this helps you avoid the time-drain I experienced this week! Sometimes the most profitable decision is saying "no" to work that doesn't align with your values and vision.</p>
+                      <p className="text-gray-800 pt-2">Talk soon,<br />Your Name</p>
                     </div>
                   )}
                 </div>
