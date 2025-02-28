@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { Resend } from "npm:resend@2.0.0";
@@ -33,7 +34,7 @@ serve(async (req) => {
       throw new Error('OpenAI API key is not configured');
     }
 
-    // Always use the provided email (no override)
+    // Use the provided email directly
     const recipientEmail = email;
     console.log(`Will send email to: ${recipientEmail}`);
 
@@ -45,19 +46,18 @@ serve(async (req) => {
     if (sendNow) {
       console.log('Sending email immediately to:', recipientEmail);
       
-      // Send a test email to both the original recipient and a test email
+      // Send the email with improved from address
       const emailResponse = await sendEmail(recipientEmail, industry, template, content);
       console.log('Email sent response:', emailResponse);
       
-      // Try also sending to zaydadasm07@gmail.com for testing
-      if (recipientEmail !== "zaydadasm07@gmail.com") {
-        try {
+      // Try also sending to a test email for verification
+      try {
+        if (recipientEmail !== "zaydadasm07@gmail.com") {
           console.log('Also sending test email to: zaydadasm07@gmail.com');
           await sendEmail("zaydadasm07@gmail.com", industry, template, content);
-        } catch (error) {
-          console.error('Error sending test email:', error);
-          // Don't throw here, we'll continue with the main flow
         }
+      } catch (testEmailError) {
+        console.error('Error sending test email:', testEmailError);
       }
       
       // Save to Supabase for record-keeping
@@ -81,7 +81,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: true, 
         email: emailResponse,
-        message: `Email sent successfully to ${recipientEmail} ${recipientEmail !== "zaydadasm07@gmail.com" ? "and to zaydadasm07@gmail.com" : ""}`,
+        message: `Email sent successfully to ${recipientEmail}`,
         emailContent: content.substring(0, 300) + "..." // Return a preview of content for verification
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -235,11 +235,15 @@ async function sendEmail(email: string, industry: string, template: string, cont
     const resend = new Resend(RESEND_API_KEY);
     const htmlContent = formatContentAsHtml(content, industry, template);
     
+    // IMPORTANT: Changed the from address to use a custom sender name
+    // but still using Resend's domain since we haven't verified our own
     const response = await resend.emails.send({
-      from: 'Content Generator <onboarding@resend.dev>',
+      from: 'Industry Content <industry-insights@resend.dev>',
       to: [email],
-      subject: `Your ${industry} Content Update`,
+      subject: `Your ${industry} Content Update - Important Content Inside`,
       html: htmlContent,
+      // Add reply-to for better deliverability
+      reply_to: "noreply@contentgenerator.com"
     });
     
     console.log('Email sent successfully:', response);

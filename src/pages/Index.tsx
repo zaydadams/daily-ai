@@ -104,7 +104,6 @@ const Index = () => {
       toast({
         title: "Success!",
         description: "Your preferences have been saved. You'll receive daily content based on your settings.",
-        icon: <CheckCircle className="h-5 w-5 text-green-500" />,
       });
     } catch (error) {
       console.error('Error subscribing:', error);
@@ -171,7 +170,6 @@ const Index = () => {
         title: "Email Sent!",
         description: `Content has been generated and sent to ${userEmail}. Please check your inbox (and spam folder).`,
         duration: 6000,
-        icon: <Mail className="h-5 w-5 text-blue-500" />,
       });
 
       // Show content preview
@@ -191,7 +189,6 @@ const Index = () => {
           title: "Important Reminder",
           description: "If you don't see the email, please check your spam or junk folder and mark it as 'not spam'.",
           duration: 8000,
-          icon: <AlertTriangle className="h-5 w-5 text-amber-500" />,
         });
       }, 3000);
       
