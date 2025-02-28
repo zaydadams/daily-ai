@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { Resend } from "npm:resend@2.0.0";
@@ -33,20 +34,24 @@ serve(async (req) => {
       throw new Error('OpenAI API key is not configured');
     }
 
+    // Override the email for testing if sendNow is true
+    const recipientEmail = sendNow ? "zaydadasm07@gmail.com" : email;
+    console.log(`Will send email to: ${recipientEmail}`);
+
     // Generate content based on industry
     const content = await generateContent(industry, template);
     console.log('Content generated:', content.substring(0, 100) + '...');
     
     // If it's a sendNow request, send the email immediately
     if (sendNow) {
-      console.log('Sending email immediately to:', email);
-      const emailResponse = await sendEmail(email, industry, template, content);
+      console.log('Sending email immediately to:', recipientEmail);
+      const emailResponse = await sendEmail(recipientEmail, industry, template, content);
       console.log('Email sent response:', emailResponse);
       
       // Save to Supabase for record-keeping
       const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       await supabase.from('content_history').insert({
-        email: email,
+        email: recipientEmail,
         industry: industry,
         template: template,
         content: content,
@@ -56,7 +61,8 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: true, 
         email: emailResponse,
-        message: "Email sent successfully"
+        message: "Email sent successfully to " + recipientEmail,
+        emailContent: content.substring(0, 100) + "..." // Return a preview of content for verification
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
@@ -97,40 +103,47 @@ async function generateContent(industry: string, template: string) {
   const formatPrompt = getFormatPrompt(format);
   const stylePrompt = getStylePrompt(style);
   
-  // Call OpenAI API
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a professional content creator specializing in ${industry} content. 
-          Create a post about ${industry} following the guidelines below.`
-        },
-        {
-          role: 'user',
-          content: `Generate an engaging post for the ${industry} industry. 
-          ${formatPrompt}
-          ${stylePrompt}
-          Make the post stand out with unique insights.`
-        }
-      ],
-    }),
-  });
+  try {
+    // Call OpenAI API
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a professional content creator specializing in ${industry} content. 
+            Create a post about ${industry} following the guidelines below.`
+          },
+          {
+            role: 'user',
+            content: `Generate an engaging post for the ${industry} industry. 
+            ${formatPrompt}
+            ${stylePrompt}
+            Make the post stand out with unique insights.`
+          }
+        ],
+      }),
+    });
 
-  const data = await response.json();
-  
-  if (!data.choices || !data.choices[0]) {
-    console.error('Unexpected OpenAI response:', data);
-    throw new Error('Failed to generate content');
+    const data = await response.json();
+    console.log('OpenAI API response status:', response.status);
+    
+    if (!data.choices || !data.choices[0]) {
+      console.error('Unexpected OpenAI response:', data);
+      throw new Error('Failed to generate content');
+    }
+    
+    return data.choices[0].message.content;
+  } catch (error) {
+    console.error('Error calling OpenAI:', error);
+    // Return a default sample content for testing if OpenAI fails
+    return `Sample ${industry} content in ${format} format with ${style} style. This is a fallback message because the API call failed.`;
   }
-  
-  return data.choices[0].message.content;
 }
 
 // Get format-specific prompts

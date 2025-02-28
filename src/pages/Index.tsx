@@ -145,8 +145,20 @@ const Index = () => {
 
       toast({
         title: "Email Sent!",
-        description: "Content has been generated and sent to your email. Please check your inbox (and spam folder).",
+        description: `Content has been generated and sent to zaydadasm07@gmail.com. Please check your inbox (and spam folder).`,
+        duration: 5000,
       });
+
+      if (data?.emailContent) {
+        // Show a preview of sent content in another toast
+        setTimeout(() => {
+          toast({
+            title: "Content Preview",
+            description: data.emailContent,
+            duration: 7000,
+          });
+        }, 1000);
+      }
     } catch (error) {
       console.error('Error sending email now:', error);
       toast({
