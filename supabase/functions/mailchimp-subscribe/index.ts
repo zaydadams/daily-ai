@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { Resend } from "npm:resend@2.0.0";
@@ -34,8 +33,8 @@ serve(async (req) => {
       throw new Error('OpenAI API key is not configured');
     }
 
-    // Override the email for testing if sendNow is true
-    const recipientEmail = sendNow ? "zaydadasm07@gmail.com" : email;
+    // Always use the provided email (no override)
+    const recipientEmail = email;
     console.log(`Will send email to: ${recipientEmail}`);
 
     // Generate content based on industry
@@ -45,24 +44,45 @@ serve(async (req) => {
     // If it's a sendNow request, send the email immediately
     if (sendNow) {
       console.log('Sending email immediately to:', recipientEmail);
+      
+      // Send a test email to both the original recipient and a test email
       const emailResponse = await sendEmail(recipientEmail, industry, template, content);
       console.log('Email sent response:', emailResponse);
       
+      // Try also sending to zaydadasm07@gmail.com for testing
+      if (recipientEmail !== "zaydadasm07@gmail.com") {
+        try {
+          console.log('Also sending test email to: zaydadasm07@gmail.com');
+          await sendEmail("zaydadasm07@gmail.com", industry, template, content);
+        } catch (error) {
+          console.error('Error sending test email:', error);
+          // Don't throw here, we'll continue with the main flow
+        }
+      }
+      
       // Save to Supabase for record-keeping
       const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      await supabase.from('content_history').insert({
-        email: recipientEmail,
-        industry: industry,
-        template: template,
-        content: content,
-        sent_at: new Date().toISOString(),
-      });
+      try {
+        const { error } = await supabase.from('content_history').insert({
+          email: recipientEmail,
+          industry: industry,
+          template: template,
+          content: content,
+          sent_at: new Date().toISOString(),
+        });
+        
+        if (error) {
+          console.error('Error saving to content_history:', error);
+        }
+      } catch (dbError) {
+        console.error('Database error:', dbError);
+      }
 
       return new Response(JSON.stringify({ 
         success: true, 
         email: emailResponse,
-        message: "Email sent successfully to " + recipientEmail,
-        emailContent: content.substring(0, 100) + "..." // Return a preview of content for verification
+        message: `Email sent successfully to ${recipientEmail} ${recipientEmail !== "zaydadasm07@gmail.com" ? "and to zaydadasm07@gmail.com" : ""}`,
+        emailContent: content.substring(0, 300) + "..." // Return a preview of content for verification
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
@@ -93,6 +113,11 @@ serve(async (req) => {
 async function generateContent(industry: string, template: string) {
   console.log('Generating content for:', industry, template);
   
+  // For immediate testing, just return sample content
+  if (!industry || industry.trim() === '') {
+    return `This is sample content for a generic industry. Please select a specific industry for better content.`;
+  }
+  
   // Parse template to get format and style
   let format = template;
   let style = "x-style";
@@ -112,7 +137,7 @@ async function generateContent(industry: string, template: string) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-3.5-turbo', // Use a more reliable model
         messages: [
           {
             role: 'system',
@@ -135,14 +160,32 @@ async function generateContent(industry: string, template: string) {
     
     if (!data.choices || !data.choices[0]) {
       console.error('Unexpected OpenAI response:', data);
-      throw new Error('Failed to generate content');
+      return `Unable to generate ${industry} content. Here's a placeholder: 
+      
+      "5 Essential Tips for ${industry} Success:
+      1. Focus on customer needs first
+      2. Stay updated with industry trends
+      3. Invest in quality tools and training
+      4. Build a strong online presence
+      5. Network with other professionals
+      
+      Success in ${industry} comes from consistent improvement and customer focus."`;
     }
     
     return data.choices[0].message.content;
   } catch (error) {
     console.error('Error calling OpenAI:', error);
     // Return a default sample content for testing if OpenAI fails
-    return `Sample ${industry} content in ${format} format with ${style} style. This is a fallback message because the API call failed.`;
+    return `Sample ${industry} content (OpenAI API unavailable):
+    
+    "5 Essential Tips for ${industry} Success:
+    1. Focus on customer needs first
+    2. Stay updated with industry trends
+    3. Invest in quality tools and training
+    4. Build a strong online presence
+    5. Network with other professionals
+    
+    Success in ${industry} comes from consistent improvement and customer focus."`;
   }
 }
 
@@ -181,6 +224,14 @@ async function sendEmail(email: string, industry: string, template: string, cont
   console.log('Sending email to:', email);
   
   try {
+    if (!email || email.trim() === '') {
+      throw new Error("Email address is required");
+    }
+    
+    if (!email.includes('@')) {
+      throw new Error("Invalid email address format");
+    }
+    
     const resend = new Resend(RESEND_API_KEY);
     const htmlContent = formatContentAsHtml(content, industry, template);
     

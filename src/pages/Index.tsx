@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { AlertTriangle, Mail, CheckCircle } from "lucide-react";
 
 const Index = () => {
   const [selectedIndustry, setSelectedIndustry] = useState("");
@@ -28,11 +29,15 @@ const Index = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user?.email) {
         setUserEmail(session.user.email);
+        console.log("User is logged in with email:", session.user.email);
+      } else {
+        console.log("No user session found");
       }
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth state changed:", event);
       setUserEmail(session?.user?.email ?? null);
     });
 
@@ -41,6 +46,7 @@ const Index = () => {
 
   const handleIndustrySelect = (industry: string) => {
     setSelectedIndustry(industry);
+    console.log("Selected industry:", industry);
   };
 
   const handleSubscribe = async () => {
@@ -57,8 +63,10 @@ const Index = () => {
 
     setIsSubscribing(true);
     try {
+      console.log("Saving preferences for:", userEmail);
+      
       // Save to Supabase
-      await supabase
+      const { error: upsertError } = await supabase
         .from('user_industry_preferences')
         .upsert([
           {
@@ -71,8 +79,13 @@ const Index = () => {
             user_id: userEmail,
           }
         ]);
+        
+      if (upsertError) {
+        console.error("Error saving preferences:", upsertError);
+        throw upsertError;
+      }
 
-      // Subscribe to Mailchimp
+      // Call edge function to register the preferences
       const { error } = await supabase.functions.invoke('mailchimp-subscribe', {
         body: { 
           email: userEmail, 
@@ -83,11 +96,15 @@ const Index = () => {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Function error:", error);
+        throw error;
+      }
 
       toast({
         title: "Success!",
         description: "Your preferences have been saved. You'll receive daily content based on your settings.",
+        icon: <CheckCircle className="h-5 w-5 text-green-500" />,
       });
     } catch (error) {
       console.error('Error subscribing:', error);
@@ -124,7 +141,13 @@ const Index = () => {
         sendNow: true
       });
 
-      // Call the same function but indicate it's an immediate send
+      // Show initial toast that we're generating content
+      toast({
+        title: "Generating Content",
+        description: "Creating customized content for your industry. This may take a few seconds...",
+      });
+
+      // Call the function with sendNow flag
       const { data, error } = await supabase.functions.invoke('mailchimp-subscribe', {
         body: { 
           email: userEmail, 
@@ -143,27 +166,40 @@ const Index = () => {
 
       console.log("Email function response:", data);
 
+      // Success toast with more details
       toast({
         title: "Email Sent!",
-        description: `Content has been generated and sent to zaydadasm07@gmail.com. Please check your inbox (and spam folder).`,
-        duration: 5000,
+        description: `Content has been generated and sent to ${userEmail}. Please check your inbox (and spam folder).`,
+        duration: 6000,
+        icon: <Mail className="h-5 w-5 text-blue-500" />,
       });
 
+      // Show content preview
       if (data?.emailContent) {
-        // Show a preview of sent content in another toast
         setTimeout(() => {
           toast({
             title: "Content Preview",
             description: data.emailContent,
-            duration: 7000,
+            duration: 8000,
           });
         }, 1000);
       }
+      
+      // Also show a spam folder reminder
+      setTimeout(() => {
+        toast({
+          title: "Important Reminder",
+          description: "If you don't see the email, please check your spam or junk folder and mark it as 'not spam'.",
+          duration: 8000,
+          icon: <AlertTriangle className="h-5 w-5 text-amber-500" />,
+        });
+      }, 3000);
+      
     } catch (error) {
       console.error('Error sending email now:', error);
       toast({
         title: "Error",
-        description: "Failed to send email. Please try again later.",
+        description: `Failed to send email: ${error.message || "Unknown error"}`,
         variant: "destructive",
       });
     } finally {
@@ -190,6 +226,12 @@ const Index = () => {
           <p className="text-[#8E9196] max-w-2xl mx-auto text-lg">
             Set your preferences to receive customized content for your industry
           </p>
+          
+          {userEmail && (
+            <div className="mt-2 text-green-400 text-sm font-medium">
+              Logged in as: {userEmail}
+            </div>
+          )}
         </div>
 
         <Tabs defaultValue="preferences" className="mb-8" onValueChange={setActiveTab}>
