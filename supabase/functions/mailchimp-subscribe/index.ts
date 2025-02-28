@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { Resend } from "npm:resend@2.0.0";
@@ -46,7 +45,7 @@ serve(async (req) => {
     if (sendNow) {
       console.log('Sending email immediately to:', recipientEmail);
       
-      // Send the email with improved from address
+      // Send the email with the verified sender email
       const emailResponse = await sendEmail(recipientEmail, industry, template, content);
       console.log('Email sent response:', emailResponse);
       
@@ -235,15 +234,13 @@ async function sendEmail(email: string, industry: string, template: string, cont
     const resend = new Resend(RESEND_API_KEY);
     const htmlContent = formatContentAsHtml(content, industry, template);
     
-    // IMPORTANT: Changed the from address to use a custom sender name
-    // but still using Resend's domain since we haven't verified our own
+    // Using the verified shaun@writer.expert domain
     const response = await resend.emails.send({
-      from: 'Industry Content <industry-insights@resend.dev>',
+      from: 'Writer Expert <shaun@writer.expert>',
       to: [email],
-      subject: `Your ${industry} Content Update - Important Content Inside`,
+      subject: `Your ${industry} Content Update - From Writer Expert`,
       html: htmlContent,
-      // Add reply-to for better deliverability
-      reply_to: "noreply@contentgenerator.com"
+      reply_to: "shaun@writer.expert" // Also use the verified email as reply-to
     });
     
     console.log('Email sent successfully:', response);
@@ -285,7 +282,7 @@ function formatContentAsHtml(content: string, industry: string, template: string
         <p>This content was generated based on your preferences.</p>
         <p>Template: ${template}</p>
         <p>Industry: ${industry}</p>
-        <p>&copy; ${new Date().getFullYear()} Content Generator</p>
+        <p>&copy; ${new Date().getFullYear()} Writer Expert</p>
       </div>
     </body>
     </html>
