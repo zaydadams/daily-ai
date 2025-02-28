@@ -115,8 +115,17 @@ const Index = () => {
 
     setIsSendingNow(true);
     try {
+      console.log("Sending email request with:", {
+        email: userEmail,
+        industry: selectedIndustry,
+        template: selectedTemplate,
+        deliveryTime,
+        timezone,
+        sendNow: true
+      });
+
       // Call the same function but indicate it's an immediate send
-      const { error } = await supabase.functions.invoke('mailchimp-subscribe', {
+      const { data, error } = await supabase.functions.invoke('mailchimp-subscribe', {
         body: { 
           email: userEmail, 
           industry: selectedIndustry,
@@ -127,11 +136,16 @@ const Index = () => {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Function error:", error);
+        throw error;
+      }
+
+      console.log("Email function response:", data);
 
       toast({
         title: "Email Sent!",
-        description: "Content has been generated and sent to your email.",
+        description: "Content has been generated and sent to your email. Please check your inbox (and spam folder).",
       });
     } catch (error) {
       console.error('Error sending email now:', error);
@@ -227,7 +241,7 @@ const Index = () => {
                 <Button 
                   onClick={handleSubscribe}
                   disabled={isSubscribing || !selectedIndustry}
-                  className="w-full bg-[#3b7ff5] hover:bg-[#2b6fe5]"
+                  className="w-full"
                 >
                   {isSubscribing ? "Saving preferences..." : "Save Preferences"}
                 </Button>
@@ -235,7 +249,8 @@ const Index = () => {
                 <Button 
                   onClick={handleSendEmailNow}
                   disabled={isSendingNow || !selectedIndustry}
-                  className="w-full bg-[#22c55e] hover:bg-[#16a34a]"
+                  variant="success"
+                  className="w-full text-base font-semibold py-6"
                 >
                   {isSendingNow ? "Sending email..." : "Send Email Now"}
                 </Button>

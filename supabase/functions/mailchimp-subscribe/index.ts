@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { Resend } from "npm:resend@2.0.0";
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
@@ -18,9 +19,9 @@ serve(async (req) => {
   }
 
   try {
-    const { email, industry, template, deliveryTime, timezone } = await req.json();
+    const { email, industry, template, deliveryTime, timezone, sendNow } = await req.json();
     
-    console.log('Request received:', { email, industry, template });
+    console.log('Request received:', { email, industry, template, sendNow });
 
     if (!RESEND_API_KEY) {
       console.error('RESEND_API_KEY is not set');
@@ -34,24 +35,38 @@ serve(async (req) => {
 
     // Generate content based on industry
     const content = await generateContent(industry, template);
+    console.log('Content generated:', content.substring(0, 100) + '...');
     
-    // Send email directly to the user
-    const emailResponse = await sendEmail(email, industry, template, content);
-    
-    // Save to Supabase for record-keeping
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    await supabase.from('content_history').insert({
-      email: email,
-      industry: industry,
-      template: template,
-      content: content,
-      sent_at: new Date().toISOString(),
-    });
+    // If it's a sendNow request, send the email immediately
+    if (sendNow) {
+      console.log('Sending email immediately to:', email);
+      const emailResponse = await sendEmail(email, industry, template, content);
+      console.log('Email sent response:', emailResponse);
+      
+      // Save to Supabase for record-keeping
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      await supabase.from('content_history').insert({
+        email: email,
+        industry: industry,
+        template: template,
+        content: content,
+        sent_at: new Date().toISOString(),
+      });
 
+      return new Response(JSON.stringify({ 
+        success: true, 
+        email: emailResponse,
+        message: "Email sent successfully"
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
+    // If it's not a sendNow request, just return success (preferences were saved in the UI code)
     return new Response(JSON.stringify({ 
       success: true, 
-      email: emailResponse,
-      message: "Successfully generated and sent content"
+      message: "Successfully saved preferences"
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
@@ -95,14 +110,14 @@ async function generateContent(industry: string, template: string) {
         {
           role: 'system',
           content: `You are a professional content creator specializing in ${industry} content. 
-          Create three separate posts about ${industry} following the guidelines below.`
+          Create a post about ${industry} following the guidelines below.`
         },
         {
           role: 'user',
-          content: `Generate 3 engaging posts for the ${industry} industry. 
+          content: `Generate an engaging post for the ${industry} industry. 
           ${formatPrompt}
           ${stylePrompt}
-          Make each post stand out with unique insights.`
+          Make the post stand out with unique insights.`
         }
       ],
     }),
@@ -153,31 +168,18 @@ async function sendEmail(email: string, industry: string, template: string, cont
   console.log('Sending email to:', email);
   
   try {
+    const resend = new Resend(RESEND_API_KEY);
     const htmlContent = formatContentAsHtml(content, industry, template);
     
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'Content Generator <onboarding@resend.dev>',
-        to: [email],
-        subject: `Your ${industry} Content Update`,
-        html: htmlContent,
-      })
+    const response = await resend.emails.send({
+      from: 'Content Generator <onboarding@resend.dev>',
+      to: [email],
+      subject: `Your ${industry} Content Update`,
+      html: htmlContent,
     });
     
-    const data = await response.json();
-    
-    if (!response.ok) {
-      console.error('Resend API error:', data);
-      throw new Error(data.message || 'Failed to send email');
-    }
-    
-    console.log('Email sent successfully:', data);
-    return data;
+    console.log('Email sent successfully:', response);
+    return response;
   } catch (error) {
     console.error('Email sending error:', error);
     throw new Error('Failed to send email: ' + (error.message || 'Unknown error'));
@@ -205,7 +207,7 @@ function formatContentAsHtml(content: string, industry: string, template: string
     </head>
     <body>
       <h1>Your ${industry} Content</h1>
-      <p>Here are today's custom content pieces for your ${industry} business:</p>
+      <p>Here is your custom content for your ${industry} business:</p>
       
       <div class="content-block">
         ${content.replace(/\n/g, '<br>')}
