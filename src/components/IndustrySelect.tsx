@@ -1,14 +1,21 @@
 
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 interface IndustrySelectProps {
   onSelect: (value: string) => void;
+  initialValue?: string;
 }
 
-export function IndustrySelect({ onSelect }: IndustrySelectProps) {
-  const [value, setValue] = useState("");
+export function IndustrySelect({ onSelect, initialValue = "" }: IndustrySelectProps) {
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    if (initialValue) {
+      setValue(initialValue);
+    }
+  }, [initialValue]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setValue(e.target.value);

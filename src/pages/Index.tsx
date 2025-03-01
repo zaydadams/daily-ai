@@ -30,6 +30,9 @@ const Index = () => {
       if (session?.user?.email) {
         setUserEmail(session.user.email);
         console.log("User is logged in with email:", session.user.email);
+        
+        // Fetch existing preferences for this user
+        fetchUserPreferences(session.user.email);
       } else {
         console.log("No user session found");
       }
@@ -38,11 +41,44 @@ const Index = () => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("Auth state changed:", event);
-      setUserEmail(session?.user?.email ?? null);
+      if (session?.user?.email) {
+        setUserEmail(session.user.email);
+        // Fetch preferences when user logs in
+        fetchUserPreferences(session.user.email);
+      } else {
+        setUserEmail(null);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUserPreferences = async (email: string) => {
+    try {
+      console.log("Fetching preferences for:", email);
+      const { data, error } = await supabase
+        .from('user_industry_preferences')
+        .select('*')
+        .eq('email', email)
+        .single();
+        
+      if (error) {
+        console.error("Error fetching preferences:", error);
+        return;
+      }
+      
+      if (data) {
+        console.log("Found existing preferences:", data);
+        setSelectedIndustry(data.industry || "");
+        setSelectedTemplate(data.template || "bullet-points-style-x-style");
+        setDeliveryTime(data.delivery_time || "09:00");
+        setTimezone(data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+        setAutoGenerateEnabled(data.auto_generate !== null ? data.auto_generate : true);
+      }
+    } catch (error) {
+      console.error('Error fetching user preferences:', error);
+    }
+  };
 
   const handleIndustrySelect = (industry: string) => {
     setSelectedIndustry(industry);
@@ -78,7 +114,7 @@ const Index = () => {
             auto_generate: autoGenerateEnabled,
             user_id: userEmail,
           }
-        ]);
+        ], { onConflict: 'user_id' });
         
       if (upsertError) {
         console.error("Error saving preferences:", upsertError);
@@ -93,6 +129,7 @@ const Index = () => {
           template: selectedTemplate,
           deliveryTime: deliveryTime,
           timezone: timezone,
+          autoGenerate: autoGenerateEnabled,
         },
       });
 
@@ -103,13 +140,16 @@ const Index = () => {
 
       toast({
         title: "Success!",
-        description: "Your preferences have been saved. You'll receive daily content based on your settings.",
+        description: autoGenerateEnabled 
+          ? "Your preferences have been saved. You'll receive daily content at " + deliveryTime + " in your timezone."
+          : "Your preferences have been saved. Auto-generation is disabled, but you can send content manually.",
+        duration: 5000,
       });
     } catch (error) {
       console.error('Error subscribing:', error);
       toast({
         title: "Error",
-        description: "Failed to save preferences. Please try again later.",
+        description: `Failed to save preferences: ${error.message || "Unknown error"}`,
         variant: "destructive",
       });
     } finally {

@@ -91,7 +91,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      update_user_preferences: {
+        Args: {
+          p_email: string
+          p_industry: string
+          p_template: string
+          p_delivery_time: string
+          p_timezone: string
+          p_auto_generate: boolean
+          p_user_id: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
