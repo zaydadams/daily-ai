@@ -9,7 +9,83 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      content_history: {
+        Row: {
+          content: string
+          email: string
+          id: string
+          industry: string
+          sent_at: string | null
+          template: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          email: string
+          id?: string
+          industry: string
+          sent_at?: string | null
+          template: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          email?: string
+          id?: string
+          industry?: string
+          sent_at?: string | null
+          template?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_user_preferences"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_industry_preferences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_industry_preferences: {
+        Row: {
+          auto_generate: boolean | null
+          created_at: string | null
+          delivery_time: string | null
+          email: string
+          id: string
+          industry: string
+          template: string
+          timezone: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          auto_generate?: boolean | null
+          created_at?: string | null
+          delivery_time?: string | null
+          email: string
+          id?: string
+          industry: string
+          template: string
+          timezone?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          auto_generate?: boolean | null
+          created_at?: string | null
+          delivery_time?: string | null
+          email?: string
+          id?: string
+          industry?: string
+          template?: string
+          timezone?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
