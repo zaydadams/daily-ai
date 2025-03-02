@@ -1,14 +1,20 @@
 
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
 
 interface IndustrySelectProps {
   onSelect: (value: string) => void;
   initialValue?: string;
+  placeholder?: string;
+  helperText?: string;
 }
 
-export function IndustrySelect({ onSelect, initialValue = "" }: IndustrySelectProps) {
+export function IndustrySelect({ 
+  onSelect, 
+  initialValue = "", 
+  placeholder = "Enter your industry (e.g., Marketing, Real Estate, Finance)",
+  helperText = "We'll generate content specifically tailored to your industry. The more specific you are, the more targeted the content will be."
+}: IndustrySelectProps) {
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
@@ -27,14 +33,13 @@ export function IndustrySelect({ onSelect, initialValue = "" }: IndustrySelectPr
   return (
     <div className="mt-1">
       <Input
-        placeholder="Enter your industry (e.g., Marketing, Real Estate, Finance)"
+        placeholder={placeholder}
         value={value}
         onChange={handleChange}
         className="w-full"
       />
       <p className="text-sm text-gray-500 mt-1">
-        We'll generate content specifically tailored to your industry. 
-        The more specific you are, the more targeted the content will be.
+        {helperText}
       </p>
     </div>
   );

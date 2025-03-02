@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, Mail, CheckCircle } from "lucide-react";
+import { ToneSelector } from "@/components/ToneSelector";
 
 const Index = () => {
   const [selectedIndustry, setSelectedIndustry] = useState("");
@@ -22,6 +23,7 @@ const Index = () => {
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [activeTab, setActiveTab] = useState("preferences");
   const [autoGenerateEnabled, setAutoGenerateEnabled] = useState(true);
+  const [toneName, setToneName] = useState("professional");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -74,6 +76,7 @@ const Index = () => {
         setDeliveryTime(data.delivery_time || "09:00");
         setTimezone(data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
         setAutoGenerateEnabled(data.auto_generate !== null ? data.auto_generate : true);
+        setToneName(data.tone_name || "professional");
       }
     } catch (error) {
       console.error('Error fetching user preferences:', error);
@@ -83,6 +86,11 @@ const Index = () => {
   const handleIndustrySelect = (industry: string) => {
     setSelectedIndustry(industry);
     console.log("Selected industry:", industry);
+  };
+
+  const handleToneSelect = (tone: string) => {
+    setToneName(tone);
+    console.log("Selected tone:", tone);
   };
 
   const handleSubscribe = async () => {
@@ -113,6 +121,7 @@ const Index = () => {
             timezone: timezone,
             auto_generate: autoGenerateEnabled,
             user_id: userEmail,
+            tone_name: toneName,
           }
         ], { onConflict: 'user_id' });
         
@@ -130,6 +139,7 @@ const Index = () => {
           deliveryTime: deliveryTime,
           timezone: timezone,
           autoGenerate: autoGenerateEnabled,
+          toneName: toneName,
         },
       });
 
@@ -177,6 +187,7 @@ const Index = () => {
         template: selectedTemplate,
         deliveryTime,
         timezone,
+        toneName,
         sendNow: true
       });
 
@@ -194,6 +205,7 @@ const Index = () => {
           template: selectedTemplate,
           deliveryTime: deliveryTime,
           timezone: timezone,
+          toneName: toneName,
           sendNow: true
         },
       });
@@ -285,7 +297,7 @@ const Index = () => {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="industry">Select your industry</Label>
-                  <IndustrySelect onSelect={handleIndustrySelect} />
+                  <IndustrySelect onSelect={handleIndustrySelect} initialValue={selectedIndustry} />
                 </div>
                 
                 <div className="flex items-center space-x-2">
@@ -298,6 +310,15 @@ const Index = () => {
                     Automatically generate and send daily content
                   </Label>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Tone of Voice</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ToneSelector onSelect={handleToneSelect} initialValue={toneName} />
               </CardContent>
             </Card>
 
