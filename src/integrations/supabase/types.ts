@@ -47,6 +47,39 @@ export type Database = {
           },
         ]
       }
+      scheduled_email_logs: {
+        Row: {
+          created_at: string | null
+          email: string
+          error_message: string | null
+          id: string
+          industry: string
+          scheduled_time: string | null
+          status: string | null
+          template: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          error_message?: string | null
+          id?: string
+          industry: string
+          scheduled_time?: string | null
+          status?: string | null
+          template: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          error_message?: string | null
+          id?: string
+          industry?: string
+          scheduled_time?: string | null
+          status?: string | null
+          template?: string
+        }
+        Relationships: []
+      }
       user_industry_preferences: {
         Row: {
           auto_generate: boolean | null

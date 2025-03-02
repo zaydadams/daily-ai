@@ -33,7 +33,8 @@ export function IndustrySelect({ onSelect, initialValue = "" }: IndustrySelectPr
         className="w-full"
       />
       <p className="text-sm text-gray-500 mt-1">
-        We'll generate content specifically tailored to your industry.
+        We'll generate content specifically tailored to your industry. 
+        The more specific you are, the more targeted the content will be.
       </p>
     </div>
   );

@@ -3,6 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
+import { AlertCircle } from "lucide-react";
 
 interface TimePreferenceProps {
   deliveryTime: string;
@@ -18,6 +19,7 @@ export function TimePreference({
   onTimezoneChange 
 }: TimePreferenceProps) {
   const [timezones, setTimezones] = useState<string[]>([]);
+  const [currentTime, setCurrentTime] = useState<string>("");
 
   useEffect(() => {
     // Get a list of timezones
@@ -49,7 +51,32 @@ export function TimePreference({
     }
     
     setTimezones(commonTimezones);
-  }, []);
+
+    // Update current time in selected timezone
+    updateCurrentTime();
+
+    // Set up interval to update the current time every minute
+    const intervalId = setInterval(updateCurrentTime, 60000);
+    
+    return () => clearInterval(intervalId);
+  }, [timezone]);
+
+  const updateCurrentTime = () => {
+    try {
+      const now = new Date();
+      const options: Intl.DateTimeFormatOptions = {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      };
+      const timeString = new Intl.DateTimeFormat('en-US', options).format(now);
+      setCurrentTime(timeString);
+    } catch (error) {
+      console.error("Error formatting time:", error);
+      setCurrentTime("--:--");
+    }
+  };
 
   const formatTimezoneLabel = (tz: string) => {
     try {
@@ -79,6 +106,10 @@ export function TimePreference({
           onChange={(e) => onTimeChange(e.target.value)}
           className="mt-1"
         />
+        <div className="flex items-center space-x-2 text-sm text-gray-500 mt-1">
+          <span>Current time in your selected timezone: </span>
+          <span className="font-medium">{currentTime}</span>
+        </div>
         <p className="text-sm text-gray-500 mt-1">
           Choose what time you'd like to receive your daily content.
         </p>
@@ -101,6 +132,17 @@ export function TimePreference({
         <p className="text-sm text-gray-500 mt-1">
           We'll deliver your content according to your local timezone.
         </p>
+      </div>
+      
+      <div className="flex items-start p-3 bg-amber-50 border border-amber-200 rounded-md">
+        <AlertCircle className="text-amber-500 mr-2 mt-0.5 h-5 w-5 flex-shrink-0" />
+        <div className="text-sm text-amber-800">
+          <p className="font-medium">Important Note About Scheduled Delivery</p>
+          <p className="mt-1">
+            After saving your preferences, you'll receive content at your selected time every day. 
+            Make sure the auto-generate toggle is enabled for scheduled delivery.
+          </p>
+        </div>
       </div>
     </div>
   );
