@@ -59,6 +59,8 @@ serve(async (req) => {
           );
         }
 
+        console.log('Creating checkout session for:', email, 'with price ID:', priceId);
+
         // Create a checkout session
         const session = await stripe.checkout.sessions.create({
           payment_method_types: ['card'],
@@ -69,14 +71,16 @@ serve(async (req) => {
             },
           ],
           mode: 'subscription',
-          success_url: `${req.headers.get('origin')}/`,
-          cancel_url: `${req.headers.get('origin')}/`,
+          success_url: `${req.headers.get('origin')}/dashboard?subscription=success`,
+          cancel_url: `${req.headers.get('origin')}/dashboard?subscription=canceled`,
           customer_email: email,
           client_reference_id: email,
           metadata: {
             email,
           },
         });
+
+        console.log('Checkout session created:', session.id);
 
         return new Response(
           JSON.stringify({ url: session.url }),
@@ -90,9 +94,9 @@ serve(async (req) => {
           .from('user_subscriptions')
           .select('*')
           .eq('email', email)
-          .single();
+          .maybeSingle();
 
-        if (subscriptionError && subscriptionError.code !== 'PGRST116') {
+        if (subscriptionError) {
           console.error('Error fetching subscription:', subscriptionError);
           return new Response(
             JSON.stringify({ error: 'Error fetching subscription data' }),
@@ -123,15 +127,6 @@ serve(async (req) => {
             customerId: subscription.customer_id,
             subscriptionId: subscription.subscription_id
           }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      case 'handle-webhook': {
-        // This would typically be a separate endpoint for Stripe webhooks
-        // We're simplifying for this example
-        return new Response(
-          JSON.stringify({ message: 'Webhook endpoint should be implemented separately' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }

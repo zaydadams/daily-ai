@@ -15,7 +15,12 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
   const [subscriptionStatus, setSubscriptionStatus] = useState<'loading' | 'active' | 'inactive' | 'expired'>('loading');
   const [planType, setPlanType] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Price IDs for subscriptions (replace with your actual Stripe price IDs)
+  const MONTHLY_PRICE_ID = 'price_1PxSsP2eZvKYloZDrQkWoXvK';
+  const ANNUAL_PRICE_ID = 'price_1PxSsP2eZvKYloZDrQkWoXvK'; // Using same ID for demo, replace with actual annual price ID
 
   // Check subscription status when component mounts or email changes
   useEffect(() => {
@@ -26,11 +31,44 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
     }
   }, [userEmail]);
 
+  // Check for URL parameters after Stripe redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const subscriptionStatus = params.get('subscription');
+    
+    if (subscriptionStatus === 'success') {
+      toast({
+        title: "Subscription successful!",
+        description: "Thank you for subscribing. You now have full access to all features.",
+        variant: "success",
+      });
+      // Remove the query parameter to avoid showing the toast again on refresh
+      const url = new URL(window.location.href);
+      url.searchParams.delete('subscription');
+      window.history.replaceState({}, '', url.toString());
+      
+      // Refresh subscription status
+      checkSubscriptionStatus();
+    } else if (subscriptionStatus === 'canceled') {
+      toast({
+        title: "Subscription canceled",
+        description: "Your subscription process was canceled. You can try again anytime.",
+        variant: "default",
+      });
+      // Remove the query parameter
+      const url = new URL(window.location.href);
+      url.searchParams.delete('subscription');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   const checkSubscriptionStatus = async () => {
     if (!userEmail) return;
     
     setSubscriptionStatus('loading');
+    setError(null);
     try {
+      console.log('Checking subscription status for email:', userEmail);
       const { data, error } = await supabase.functions.invoke('stripe-subscription', {
         body: { 
           action: 'get-subscription-status',
@@ -41,10 +79,12 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
       if (error) {
         console.error('Error checking subscription:', error);
         setSubscriptionStatus('inactive');
+        setError('Failed to check subscription status. Please try refreshing the page.');
         if (onSubscriptionStatusChange) onSubscriptionStatusChange('inactive');
         return;
       }
       
+      console.log('Subscription status response:', data);
       setSubscriptionStatus(data.status);
       if (data.planType) setPlanType(data.planType);
       
@@ -52,6 +92,7 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
     } catch (error) {
       console.error('Error checking subscription:', error);
       setSubscriptionStatus('inactive');
+      setError('Failed to check subscription status. Please try refreshing the page.');
       if (onSubscriptionStatusChange) onSubscriptionStatusChange('inactive');
     }
   };
@@ -67,7 +108,9 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
     }
     
     setIsLoading(true);
+    setError(null);
     try {
+      console.log('Creating checkout session for email:', userEmail, 'with price ID:', priceId);
       const { data, error } = await supabase.functions.invoke('stripe-subscription', {
         body: { 
           action: 'create-checkout-session',
@@ -77,14 +120,17 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
       });
       
       if (error) {
+        console.error('Error creating checkout session:', error);
         toast({
           title: "Error",
           description: "Failed to start subscription process. Please try again.",
           variant: "destructive",
         });
+        setError('Failed to create checkout session. Please try again.');
         return;
       }
       
+      console.log('Redirecting to Stripe checkout:', data.url);
       // Redirect to Stripe Checkout
       window.location.href = data.url;
     } catch (error) {
@@ -94,6 +140,7 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
         description: "Failed to start subscription process. Please try again.",
         variant: "destructive",
       });
+      setError('Failed to create checkout session. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -107,6 +154,25 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
         </CardHeader>
         <CardContent>
           <p>Please wait while we check your subscription status.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="border-red-200 bg-red-50">
+        <CardHeader>
+          <CardTitle className="flex items-center text-red-700">
+            <AlertTriangle className="mr-2 h-5 w-5" />
+            Error
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-red-700 mb-4">{error}</p>
+          <Button onClick={checkSubscriptionStatus} variant="outline">
+            Try Again
+          </Button>
         </CardContent>
       </Card>
     );
@@ -145,7 +211,7 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
           </p>
           <div className="space-y-4">
             <Button 
-              onClick={() => handleSubscribe('price_1PxSsP2eZvKYloZDrQkWoXvK')} 
+              onClick={() => handleSubscribe(MONTHLY_PRICE_ID)} 
               disabled={isLoading}
               className="w-full"
             >
@@ -188,7 +254,7 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
               </li>
             </ul>
             <Button 
-              onClick={() => handleSubscribe('price_1PxSsP2eZvKYloZDrQkWoXvK')} 
+              onClick={() => handleSubscribe(MONTHLY_PRICE_ID)} 
               disabled={isLoading}
               className="w-full"
             >
@@ -219,7 +285,7 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
               </li>
             </ul>
             <Button 
-              onClick={() => handleSubscribe('price_1PxSsP2eZvKYloZDrQkWoXvK')} 
+              onClick={() => handleSubscribe(ANNUAL_PRICE_ID)} 
               disabled={isLoading}
               className="w-full"
             >
