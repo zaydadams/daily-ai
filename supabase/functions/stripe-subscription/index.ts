@@ -27,25 +27,12 @@ serve(async (req) => {
   try {
     const { action, email, priceId } = await req.json();
     
+    console.log(`Processing ${action} request for email: ${email}`);
+    
     if (!email) {
       return new Response(
         JSON.stringify({ error: 'Email is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Lookup user by email
-    const { data: users, error: userError } = await supabase
-      .from('user_industry_preferences')
-      .select('*')
-      .eq('email', email)
-      .single();
-
-    if (userError && userError.code !== 'PGRST116') {
-      console.error('Error fetching user:', userError);
-      return new Response(
-        JSON.stringify({ error: 'Error fetching user data' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -89,44 +76,91 @@ serve(async (req) => {
       }
 
       case 'get-subscription-status': {
-        // Check if user exists in user_subscriptions
-        const { data: subscription, error: subscriptionError } = await supabase
-          .from('user_subscriptions')
-          .select('*')
-          .eq('email', email)
-          .maybeSingle();
+        console.log('Checking subscription status for:', email);
+        
+        try {
+          // Check if user exists in user_subscriptions
+          const { data: subscription, error: subscriptionError } = await supabase
+            .from('user_subscriptions')
+            .select('*')
+            .eq('email', email)
+            .maybeSingle();
 
-        if (subscriptionError) {
-          console.error('Error fetching subscription:', subscriptionError);
+          if (subscriptionError) {
+            console.error('Database error fetching subscription:', subscriptionError);
+            return new Response(
+              JSON.stringify({ error: 'Error fetching subscription data: ' + subscriptionError.message }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          console.log('Subscription data retrieved:', subscription);
+
+          if (!subscription) {
+            console.log('No active subscription found for:', email);
+            return new Response(
+              JSON.stringify({ status: 'inactive', message: 'No active subscription found' }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          // If subscription exists but expired
+          if (subscription.expires_at && new Date(subscription.expires_at) < new Date()) {
+            console.log('Subscription expired for:', email);
+            return new Response(
+              JSON.stringify({ status: 'expired', message: 'Subscription has expired' }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          // Active subscription
+          console.log('Active subscription found for:', email);
           return new Response(
-            JSON.stringify({ error: 'Error fetching subscription data' }),
+            JSON.stringify({ 
+              status: 'active', 
+              planType: subscription.plan_type,
+              customerId: subscription.customer_id,
+              subscriptionId: subscription.subscription_id
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } catch (error) {
+          console.error('Unexpected error in get-subscription-status:', error);
+          return new Response(
+            JSON.stringify({ error: 'Unexpected error: ' + error.message }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+      }
 
-        if (!subscription) {
+      // Add a subscription record manually (for testing or admin purposes)
+      case 'add-subscription': {
+        console.log('Adding test subscription for:', email);
+        
+        const { planType = 'monthly', expiresAt } = await req.json();
+        
+        const { data, error } = await supabase
+          .from('user_subscriptions')
+          .upsert({
+            email,
+            plan_type: planType,
+            status: 'active',
+            expires_at: expiresAt || null,
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+          
+        if (error) {
+          console.error('Error adding test subscription:', error);
           return new Response(
-            JSON.stringify({ status: 'inactive', message: 'No active subscription found' }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ error: 'Failed to add subscription: ' + error.message }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-
-        // If subscription exists but expired
-        if (subscription.expires_at && new Date(subscription.expires_at) < new Date()) {
-          return new Response(
-            JSON.stringify({ status: 'expired', message: 'Subscription has expired' }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        // Active subscription
+        
         return new Response(
-          JSON.stringify({ 
-            status: 'active', 
-            planType: subscription.plan_type,
-            customerId: subscription.customer_id,
-            subscriptionId: subscription.subscription_id
-          }),
+          JSON.stringify({ success: true, subscription: data }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -140,7 +174,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error processing request:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Unexpected server error: ' + error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
