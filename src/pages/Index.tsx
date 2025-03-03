@@ -266,7 +266,8 @@ const Index = () => {
   };
 
   // Get tone-specific content for previews
-  const getToneSpecificContent = (tone: string, contentType: string) => {
+  // Define a proper return type to ensure we handle it correctly
+  const getToneSpecificContent = (tone: string, contentType: string): string | string[] => {
     switch (tone) {
       case "professional":
         if (contentType === "heading") {
@@ -327,6 +328,21 @@ const Index = () => {
           return ["Better alignment with your values", "Improved workflow efficiency", "Higher satisfaction rates", "Increased referral opportunities", "Enhanced long-term profitability"];
         }
     }
+    
+    // Default return values for each content type
+    if (contentType === "bullet") {
+      return ["Item 1", "Item 2", "Item 3", "Item 4", "Item 5"];
+    }
+    return contentType === "heading" ? "Content Heading" : 
+           contentType === "intro" ? "Content introduction." : 
+           "Content closing.";
+  };
+
+  // Helper function to ensure bullet points are always returned as an array
+  const getBulletPoints = (tone: string): string[] => {
+    const content = getToneSpecificContent(tone, "bullet");
+    // Ensure we always return an array
+    return Array.isArray(content) ? content : ["Item 1", "Item 2", "Item 3", "Item 4", "Item 5"];
   };
 
   return (
@@ -450,7 +466,7 @@ const Index = () => {
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
                       <ul className="list-disc pl-6 space-y-2">
-                        {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                        {getBulletPoints(toneName).map((item, index) => (
                           <li key={index}>{item}</li>
                         ))}
                       </ul>
@@ -464,7 +480,7 @@ const Index = () => {
                       <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
                       <p className="text-gray-600">{getToneSpecificContent(toneName, "intro")}</p>
                       <ul className="list-disc pl-6 space-y-2">
-                        {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                        {getBulletPoints(toneName).map((item, index) => (
                           <li key={index}>{item}</li>
                         ))}
                       </ul>
@@ -478,7 +494,7 @@ const Index = () => {
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
                       <ol className="list-decimal pl-6 space-y-2">
-                        {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                        {getBulletPoints(toneName).map((item, index) => (
                           <li key={index}>{item}</li>
                         ))}
                       </ol>
@@ -492,7 +508,7 @@ const Index = () => {
                       <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
                       <p className="text-gray-600">{getToneSpecificContent(toneName, "intro")}</p>
                       <ol className="list-decimal pl-6 space-y-2">
-                        {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                        {getBulletPoints(toneName).map((item, index) => (
                           <li key={index}><strong>Key point {index + 1}</strong> - {item}</li>
                         ))}
                       </ol>
@@ -507,7 +523,7 @@ const Index = () => {
                       <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
                       <p className="text-gray-800">{getToneSpecificContent(toneName, "intro")}</p>
                       <p className="text-gray-800">Key points to consider:
-                        {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                        {getBulletPoints(toneName).map((item, index) => (
                           <span key={index} className="block pl-4 pt-2">✓ {item}</span>
                         ))}
                       </p>
@@ -522,7 +538,7 @@ const Index = () => {
                       <p className="text-gray-600">{getToneSpecificContent(toneName, "intro")}</p>
                       <p className="text-gray-800 font-medium mt-4">PROFESSIONAL TIP:</p>
                       <p className="text-gray-800">Consider these important factors:
-                        {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                        {getBulletPoints(toneName).map((item, index) => (
                           <span key={index} className="block pl-4 pt-2">✓ {item}</span>
                         ))}
                       </p>
@@ -539,7 +555,7 @@ const Index = () => {
                       
                       {getTemplateParts().format === "bullet-points" && (
                         <ul className="list-disc pl-6 space-y-2 mt-4">
-                          {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                          {getBulletPoints(toneName).map((item, index) => (
                             <li key={index}>{item}</li>
                           ))}
                         </ul>
@@ -547,7 +563,7 @@ const Index = () => {
                       
                       {getTemplateParts().format === "numbered-list" && (
                         <ol className="list-decimal pl-6 space-y-2 mt-4">
-                          {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                          {getBulletPoints(toneName).map((item, index) => (
                             <li key={index}><strong>Point {index + 1}:</strong> {item}</li>
                           ))}
                         </ol>
@@ -558,7 +574,7 @@ const Index = () => {
                           <p className="font-medium text-gray-800">KEY INSIGHTS:</p>
                           <p className="text-gray-800">{getToneSpecificContent(toneName, "intro")}</p>
                           <p className="text-gray-800 mt-3">Consider these factors:
-                            {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                            {getBulletPoints(toneName).map((item, index) => (
                               <span key={index} className="block pl-4 pt-2">✓ {item}</span>
                             ))}
                           </p>
@@ -579,7 +595,7 @@ const Index = () => {
                         <div className="mt-3">
                           <p className="text-gray-800">Here are some key insights I've gathered:</p>
                           <ul className="list-disc pl-6 space-y-2 mt-2">
-                            {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                            {getBulletPoints(toneName).map((item, index) => (
                               <li key={index}>{item}</li>
                             ))}
                           </ul>
@@ -590,7 +606,7 @@ const Index = () => {
                         <div className="mt-3">
                           <p className="text-gray-800">Here's what I've learned about this topic:</p>
                           <ol className="list-decimal pl-6 space-y-2 mt-2">
-                            {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                            {getBulletPoints(toneName).map((item, index) => (
                               <li key={index}>{item}</li>
                             ))}
                           </ol>
@@ -601,7 +617,7 @@ const Index = () => {
                         <div className="mt-3">
                           <p className="text-gray-800">{getToneSpecificContent(toneName, "heading")}</p>
                           <p className="text-gray-800 mt-3">Here's what I've discovered:
-                            {getToneSpecificContent(toneName, "bullet").map((item, index) => (
+                            {getBulletPoints(toneName).map((item, index) => (
                               <span key={index} className="block pl-4 pt-2">✓ {item}</span>
                             ))}
                           </p>
