@@ -19,8 +19,8 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
   const { toast } = useToast();
 
   // Price IDs for subscriptions (replace with your actual Stripe price IDs)
-  const MONTHLY_PRICE_ID = 'price_1PxSsP2eZvKYloZDrQkWoXvK';
-  const ANNUAL_PRICE_ID = 'price_1PxSsP2eZvKYloZDrQkWoXvK'; // Using same ID for demo, replace with actual annual price ID
+  const MONTHLY_PRICE_ID = 'price_1QyWIYCu382Q0KlDz3M8weIX';
+  const ANNUAL_PRICE_ID = 'price_1QyWJwCu382Q0KlDFB6VtzLv'; // Using same ID for demo, replace with actual annual price ID
 
   // Check subscription status when component mounts or email changes
   useEffect(() => {

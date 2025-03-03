@@ -65,6 +65,7 @@ serve(async (req) => {
           metadata: {
             email,
           },
+          allow_promotion_codes: true, 
         });
 
         console.log('Checkout session created:', session.id);

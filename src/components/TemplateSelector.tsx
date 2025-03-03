@@ -45,11 +45,6 @@ export function TemplateSelector({ selectedTemplate, onSelectTemplate }: Templat
       id: "newsletter-style",
       name: "Newsletter Style",
       description: "Conversational tone with a personal touch, ideal for email."
-    },
-    {
-      id: "thought-leadership",
-      name: "Thought Leadership",
-      description: "Bold, opinionated takes establishing industry authority."
     }
   ];
 
