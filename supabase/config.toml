@@ -1,22 +1,13 @@
 
 project_id = "ceinvnueokxhrlwngfny"
 
-[api]
-# Typically this value is the same as the value of project_id
-# If omitted, CI jobs will use the value of project_id to make API requests
-id = "ceinvnueokxhrlwngfny"
+[functions]
+[functions.mailchimp-subscribe]
 
-[[functions]]
-name = "mailchimp-subscribe"
+[functions.send-scheduled-emails]
 
-[[functions]]
-name = "send-scheduled-emails"
+[functions.generate-industry-content]
 
-[[functions]]
-name = "generate-industry-content"
+[functions.stripe-subscription]
 
-[[functions]]
-name = "stripe-subscription"
-
-[[functions]]
-name = "stripe-webhook"
+[functions.stripe-webhook]
