@@ -148,6 +148,64 @@ const Index = () => {
         throw error;
       }
 
+      // If auto-generate is enabled, trigger today's email if it's within delivery window
+      if (autoGenerateEnabled) {
+        const now = new Date();
+        const currentTimeStr = now.toTimeString().substring(0, 5); // Get current time in HH:MM format
+        
+        // Check if current time is within 30 minutes of scheduled delivery time
+        // This is to avoid sending emails too far from the scheduled time
+        const deliveryHour = parseInt(deliveryTime.split(':')[0]);
+        const deliveryMinute = parseInt(deliveryTime.split(':')[1]);
+        const currentHour = parseInt(currentTimeStr.split(':')[0]);
+        const currentMinute = parseInt(currentTimeStr.split(':')[1]);
+        
+        const currentTotalMinutes = currentHour * 60 + currentMinute;
+        const deliveryTotalMinutes = deliveryHour * 60 + deliveryMinute;
+        const minutesDifference = Math.abs(currentTotalMinutes - deliveryTotalMinutes);
+        
+        // If we're within 30 minutes of delivery time or we're past delivery time for today
+        if (minutesDifference <= 30 || currentTotalMinutes > deliveryTotalMinutes) {
+          try {
+            // Show toast that we're processing today's email
+            toast({
+              title: "Processing Today's Email",
+              description: "Since you've just set up or changed your preferences, we're preparing today's content delivery.",
+              duration: 5000,
+            });
+            
+            // Call the send-scheduled-emails function to force today's email
+            const { error: scheduleError } = await supabase.functions.invoke('send-scheduled-emails', {
+              body: { 
+                users: [{
+                  email: userEmail,
+                  industry: selectedIndustry,
+                  template: selectedTemplate,
+                  timezone: timezone,
+                  auto_generate: autoGenerateEnabled,
+                  tone_name: toneName
+                }],
+                forceSendToday: true
+              },
+            });
+            
+            if (scheduleError) {
+              console.error("Error sending today's scheduled email:", scheduleError);
+              // Don't throw error here, as preferences were saved successfully
+            } else {
+              toast({
+                title: "Today's Email Scheduled",
+                description: "Your first content has been scheduled for delivery today.",
+                duration: 5000,
+              });
+            }
+          } catch (scheduleError) {
+            console.error("Error scheduling today's email:", scheduleError);
+            // Don't throw error here, as preferences were saved successfully
+          }
+        }
+      }
+
       toast({
         title: "Success!",
         description: autoGenerateEnabled 

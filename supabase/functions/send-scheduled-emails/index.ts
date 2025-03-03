@@ -15,11 +15,13 @@ interface UserToEmail {
   template: string;
   timezone: string;
   auto_generate: boolean;
+  tone_name: string;
 }
 
 // Interface for the request body
 interface RequestBody {
   users: UserToEmail[];
+  forceSendToday?: boolean; // New option to force sending today
 }
 
 serve(async (req: Request) => {
@@ -36,9 +38,10 @@ serve(async (req: Request) => {
 
     // Parse the request body
     const requestData: RequestBody = await req.json();
-    const { users } = requestData;
+    const { users, forceSendToday = false } = requestData;
 
     console.log(`Processing scheduled emails for ${users?.length || 0} users`);
+    console.log(`Force send today: ${forceSendToday}`);
 
     // If no users to email, return early
     if (!users || users.length === 0) {
@@ -61,7 +64,8 @@ serve(async (req: Request) => {
               email: user.email,
               industry: user.industry,
               template: user.template,
-              status: "generating"
+              status: "generating",
+              scheduled_time: new Date()
             })
             .select("id")
             .single();
@@ -77,6 +81,7 @@ serve(async (req: Request) => {
               body: { 
                 industry: user.industry,
                 template: user.template,
+                toneName: user.tone_name || "professional"
               },
             }
           );
@@ -116,6 +121,7 @@ serve(async (req: Request) => {
                 email: user.email,
                 industry: user.industry,
                 template: user.template,
+                toneName: user.tone_name || "professional",
                 sendNow: true,
                 emailContent: emailContent // Pass the pre-generated content
               },
@@ -161,7 +167,8 @@ serve(async (req: Request) => {
               email: user.email,
               industry: user.industry,
               template: user.template,
-              content: emailContent
+              content: emailContent,
+              tone_name: user.tone_name || "professional"
             });
 
           console.log(`Successfully sent email to ${user.email}`);
