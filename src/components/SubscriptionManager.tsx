@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +39,7 @@ export function SubscriptionManager({ userEmail, onSubscriptionStatusChange }: S
       toast({
         title: "Subscription successful!",
         description: "Thank you for subscribing. You now have full access to all features.",
-        variant: "success",
+        variant: "default", // Changed from "success" to "default"
       });
       // Remove the query parameter to avoid showing the toast again on refresh
       const url = new URL(window.location.href);
