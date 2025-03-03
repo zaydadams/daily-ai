@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { IndustrySelect } from "@/components/IndustrySelect";
 import { useToast } from "@/components/ui/use-toast";
@@ -10,8 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, Mail, CheckCircle } from "lucide-react";
+import { AlertTriangle, Mail, CheckCircle, Lock } from "lucide-react";
 import { ToneSelector } from "@/components/ToneSelector";
+import { SubscriptionManager } from "@/components/SubscriptionManager";
+import { AITemperatureSelector } from "@/components/AITemperatureSelector";
 
 const Index = () => {
   const [selectedIndustry, setSelectedIndustry] = useState("");
@@ -24,6 +25,8 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("preferences");
   const [autoGenerateEnabled, setAutoGenerateEnabled] = useState(true);
   const [toneName, setToneName] = useState("professional");
+  const [temperature, setTemperature] = useState(0.7);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'inactive' | 'expired'>('inactive');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -77,6 +80,7 @@ const Index = () => {
         setTimezone(data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
         setAutoGenerateEnabled(data.auto_generate !== null ? data.auto_generate : true);
         setToneName(data.tone_name || "professional");
+        setTemperature(data.temperature || 0.7);
       }
     } catch (error) {
       console.error('Error fetching user preferences:', error);
@@ -93,6 +97,10 @@ const Index = () => {
     console.log("Selected tone:", tone);
   };
 
+  const handleSubscriptionStatusChange = (status: 'active' | 'inactive' | 'expired') => {
+    setSubscriptionStatus(status);
+  };
+
   const handleSubscribe = async () => {
     if (!userEmail || !selectedIndustry) {
       toast({
@@ -100,6 +108,17 @@ const Index = () => {
         description: !userEmail 
           ? "Please sign in to subscribe to updates." 
           : "Please select an industry first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check subscription status for paid features
+    if (subscriptionStatus !== 'active') {
+      setActiveTab("subscription");
+      toast({
+        title: "Subscription Required",
+        description: "Please subscribe to a plan to save your preferences and generate content.",
         variant: "destructive",
       });
       return;
@@ -122,6 +141,7 @@ const Index = () => {
             auto_generate: autoGenerateEnabled,
             user_id: userEmail,
             tone_name: toneName,
+            temperature: temperature,
           }
         ], { onConflict: 'user_id' });
         
@@ -140,6 +160,7 @@ const Index = () => {
           timezone: timezone,
           autoGenerate: autoGenerateEnabled,
           toneName: toneName,
+          temperature: temperature,
         },
       });
 
@@ -183,7 +204,8 @@ const Index = () => {
                   template: selectedTemplate,
                   timezone: timezone,
                   auto_generate: autoGenerateEnabled,
-                  tone_name: toneName
+                  tone_name: toneName,
+                  temperature: temperature
                 }],
                 forceSendToday: true
               },
@@ -237,6 +259,17 @@ const Index = () => {
       return;
     }
 
+    // Check subscription status for paid features
+    if (subscriptionStatus !== 'active') {
+      setActiveTab("subscription");
+      toast({
+        title: "Subscription Required",
+        description: "Please subscribe to a plan to generate content.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSendingNow(true);
     try {
       console.log("Sending email request with:", {
@@ -246,6 +279,7 @@ const Index = () => {
         deliveryTime,
         timezone,
         toneName,
+        temperature,
         sendNow: true
       });
 
@@ -264,6 +298,7 @@ const Index = () => {
           deliveryTime: deliveryTime,
           timezone: timezone,
           toneName: toneName,
+          temperature: temperature,
           sendNow: true
         },
       });
@@ -421,10 +456,11 @@ const Index = () => {
           )}
         </div>
 
-        <Tabs defaultValue="preferences" className="mb-8" onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="preferences" className="mb-8" onValueChange={setActiveTab} value={activeTab}>
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="preferences">Preferences</TabsTrigger>
             <TabsTrigger value="preview">Content Preview</TabsTrigger>
+            <TabsTrigger value="subscription">Subscription</TabsTrigger>
           </TabsList>
           
           <TabsContent value="preferences" className="space-y-6">
@@ -457,6 +493,27 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <ToneSelector onSelect={handleToneSelect} initialValue={toneName} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>AI Temperature</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AITemperatureSelector 
+                  temperature={temperature} 
+                  onTemperatureChange={setTemperature} 
+                />
+                
+                {subscriptionStatus !== 'active' && (
+                  <div className="mt-4 p-3 bg-gray-100 border rounded-md flex items-center space-x-2">
+                    <Lock className="h-4 w-4 text-gray-500" />
+                    <span className="text-sm text-gray-600">
+                      Subscribe to adjust AI temperature for more creative or precise content
+                    </span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -504,6 +561,13 @@ const Index = () => {
                 >
                   {isSendingNow ? "Sending email..." : "Send Email Now"}
                 </Button>
+                
+                {subscriptionStatus !== 'active' && (
+                  <p className="text-center text-amber-400 text-sm flex items-center justify-center">
+                    <AlertTriangle className="h-4 w-4 mr-1" />
+                    Subscribe to unlock all features
+                  </p>
+                )}
               </div>
             ) : (
               <p className="text-center text-[#8E9196]">
@@ -692,6 +756,13 @@ const Index = () => {
                 </p>
               </CardContent>
             </Card>
+          </TabsContent>
+          
+          <TabsContent value="subscription">
+            <SubscriptionManager 
+              userEmail={userEmail} 
+              onSubscriptionStatusChange={handleSubscriptionStatusChange}
+            />
           </TabsContent>
         </Tabs>
       </div>
