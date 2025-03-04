@@ -91,6 +91,7 @@ export type Database = {
           email: string
           id: string
           industry: string
+          temperature: number | null
           template: string
           timezone: string | null
           tone_name: string | null
@@ -104,6 +105,7 @@ export type Database = {
           email: string
           id?: string
           industry: string
+          temperature?: number | null
           template: string
           timezone?: string | null
           tone_name?: string | null
@@ -117,11 +119,72 @@ export type Database = {
           email?: string
           id?: string
           industry?: string
+          temperature?: number | null
           template?: string
           timezone?: string | null
           tone_name?: string | null
           updated_at?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      user_subscriptions: {
+        Row: {
+          created_at: string | null
+          customer_id: string | null
+          email: string
+          expires_at: string | null
+          id: string
+          plan_type: string
+          status: string
+          subscription_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_id?: string | null
+          email: string
+          expires_at?: string | null
+          id?: string
+          plan_type?: string
+          status?: string
+          subscription_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_id?: string | null
+          email?: string
+          expires_at?: string | null
+          id?: string
+          plan_type?: string
+          status?: string
+          subscription_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      webhook_events: {
+        Row: {
+          created_at: string | null
+          event_data: Json
+          event_id: string
+          event_type: string
+          id: string
+        }
+        Insert: {
+          created_at?: string | null
+          event_data: Json
+          event_id: string
+          event_type: string
+          id?: string
+        }
+        Update: {
+          created_at?: string | null
+          event_data?: Json
+          event_id?: string
+          event_type?: string
+          id?: string
         }
         Relationships: []
       }
