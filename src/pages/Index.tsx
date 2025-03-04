@@ -38,6 +38,11 @@ const Index = () => {
         
         // Fetch existing preferences for this user
         fetchUserPreferences(session.user.email);
+        
+        // If the email matches our admin email, set them as admin
+        if (session.user.email === "zaydadams07@gmail.com") {
+          setAdminUser(session.user.email);
+        }
       } else {
         console.log("No user session found");
       }
@@ -50,6 +55,11 @@ const Index = () => {
         setUserEmail(session.user.email);
         // Fetch preferences when user logs in
         fetchUserPreferences(session.user.email);
+        
+        // If the email matches our admin email, set them as admin
+        if (session.user.email === "zaydadams07@gmail.com") {
+          setAdminUser(session.user.email);
+        }
       } else {
         setUserEmail(null);
       }
@@ -57,6 +67,33 @@ const Index = () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Add function to set user as admin
+  const setAdminUser = async (email: string) => {
+    try {
+      console.log("Setting admin status for:", email);
+      const { error } = await supabase.functions.invoke('set-admin-user', {
+        body: { email }
+      });
+      
+      if (error) {
+        console.error("Error setting admin status:", error);
+        return;
+      }
+      
+      // Force refresh subscription status
+      setSubscriptionStatus('active');
+      console.log(`${email} set as admin with active subscription`);
+      
+      toast({
+        title: "Admin Access Granted",
+        description: "You have been granted admin access with full features.",
+        duration: 5000,
+      });
+    } catch (error) {
+      console.error('Error setting admin user:', error);
+    }
+  };
 
   const fetchUserPreferences = async (email: string) => {
     try {
