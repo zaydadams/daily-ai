@@ -91,6 +91,7 @@ export type Database = {
           email: string
           id: string
           industry: string
+          temperature: number | null
           template: string
           timezone: string | null
           tone_name: string | null
@@ -104,6 +105,7 @@ export type Database = {
           email: string
           id?: string
           industry: string
+          temperature?: number | null
           template: string
           timezone?: string | null
           tone_name?: string | null
@@ -117,6 +119,7 @@ export type Database = {
           email?: string
           id?: string
           industry?: string
+          temperature?: number | null
           template?: string
           timezone?: string | null
           tone_name?: string | null
