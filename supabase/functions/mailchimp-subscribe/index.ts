@@ -1,3 +1,4 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import OpenAI from "https://deno.land/x/openai@1.3.0/mod.ts";
@@ -5,7 +6,7 @@ import OpenAI from "https://deno.land/x/openai@1.3.0/mod.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS', // Add this line
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
@@ -79,7 +80,7 @@ serve(async (req) => {
       try {
         const content = await generateContent(industry, toneName, temperature);
         // Subscribe the user to Mailchimp list
-        const data = {
+        const mailchimpData = {
           email_address: email,
           status: 'subscribed',
         };
@@ -90,7 +91,7 @@ serve(async (req) => {
             'Authorization': `Basic ${btoa('anystring:' + mailchimpApiKey)}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(data)
+          body: JSON.stringify(mailchimpData)
         });
 
         if (!response.ok) {
@@ -139,7 +140,7 @@ serve(async (req) => {
     }
 
     // Subscribe the user to Mailchimp list
-    const data = {
+    const mailchimpData = {
       email_address: email,
       status: 'subscribed',
     };
@@ -150,7 +151,7 @@ serve(async (req) => {
         'Authorization': `Basic ${btoa('anystring:' + mailchimpApiKey)}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(mailchimpData)
     });
 
     if (!response.ok) {
