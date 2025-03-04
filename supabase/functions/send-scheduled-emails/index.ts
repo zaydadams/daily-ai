@@ -10,7 +10,6 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Get API keys from environment variables
 const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
 const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
-const fromEmail = Deno.env.get('FROM_EMAIL') || 'noreply@example.com';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
