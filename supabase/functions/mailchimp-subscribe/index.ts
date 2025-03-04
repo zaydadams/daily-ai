@@ -12,13 +12,12 @@ const corsHeaders = {
 const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 const mailchimpApiKey = Deno.env.get('MAILCHIMP_API_KEY');
 const mailchimpListId = Deno.env.get('MAILCHIMP_LIST_ID');
-const mailchimpApiUrl = Deno.env.get('MAILCHIMP_API_URL');
+const mailchimpServerPrefix = Deno.env.get('MAILCHIMP_SERVER_PREFIX');
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Update the request handler to accept and use temperature parameter
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -34,7 +33,7 @@ serve(async (req) => {
       timezone, 
       autoGenerate,
       toneName,
-      temperature = 0.7, // Default to 0.7 if not provided
+      temperature = 0.7,
       sendNow = false 
     } = await req.json();
 
@@ -43,6 +42,18 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Email is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check if required environment variables are set
+    if (!mailchimpServerPrefix || !mailchimpListId) {
+      console.error("Missing required environment variables:", { 
+        mailchimpServerPrefix: !!mailchimpServerPrefix, 
+        mailchimpListId: !!mailchimpListId 
+      });
+      return new Response(
+        JSON.stringify({ error: 'Mailchimp API configuration is incomplete. Please check MAILCHIMP_SERVER_PREFIX and MAILCHIMP_LIST_ID environment variables.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -79,13 +90,18 @@ serve(async (req) => {
       
       try {
         const content = await generateContent(industry, toneName, temperature);
+        
+        // Construct the proper Mailchimp API URL
+        const mailchimpUrl = `https://${mailchimpServerPrefix}.api.mailchimp.com/3.0`;
+        console.log(`Using Mailchimp API URL: ${mailchimpUrl}`);
+        
         // Subscribe the user to Mailchimp list
         const mailchimpData = {
           email_address: email,
           status: 'subscribed',
         };
 
-        const response = await fetch(`${mailchimpApiUrl}/lists/${mailchimpListId}/members`, {
+        const response = await fetch(`${mailchimpUrl}/lists/${mailchimpListId}/members`, {
           method: 'POST',
           headers: {
             'Authorization': `Basic ${btoa('anystring:' + mailchimpApiKey)}`,
@@ -100,7 +116,7 @@ serve(async (req) => {
           // If the user is already subscribed, update their status
           if (result.title === "Member Exists") {
             const hash = md5(email.toLowerCase());
-            const updateResponse = await fetch(`${mailchimpApiUrl}/lists/${mailchimpListId}/members/${hash}`, {
+            const updateResponse = await fetch(`${mailchimpUrl}/lists/${mailchimpListId}/members/${hash}`, {
               method: 'PATCH',
               headers: {
                 'Authorization': `Basic ${btoa('anystring:' + mailchimpApiKey)}`,
@@ -139,13 +155,16 @@ serve(async (req) => {
       }
     }
 
+    // Construct the proper Mailchimp API URL
+    const mailchimpUrl = `https://${mailchimpServerPrefix}.api.mailchimp.com/3.0`;
+    
     // Subscribe the user to Mailchimp list
     const mailchimpData = {
       email_address: email,
       status: 'subscribed',
     };
 
-    const response = await fetch(`${mailchimpApiUrl}/lists/${mailchimpListId}/members`, {
+    const response = await fetch(`${mailchimpUrl}/lists/${mailchimpListId}/members`, {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${btoa('anystring:' + mailchimpApiKey)}`,
@@ -160,7 +179,7 @@ serve(async (req) => {
       // If the user is already subscribed, update their status
       if (result.title === "Member Exists") {
         const hash = md5(email.toLowerCase());
-        const updateResponse = await fetch(`${mailchimpApiUrl}/lists/${mailchimpListId}/members/${hash}`, {
+        const updateResponse = await fetch(`${mailchimpUrl}/lists/${mailchimpListId}/members/${hash}`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Basic ${btoa('anystring:' + mailchimpApiKey)}`,
@@ -198,13 +217,14 @@ serve(async (req) => {
   }
 });
 
-// Update the generateContent function to use temperature
 async function generateContent(industry: string, toneName = 'professional', temperature = 0.7) {
   try {
     console.log(`Generating content for industry: ${industry}, tone: ${toneName}, temperature: ${temperature}`);
     
-    const openai = new OpenAI(openaiApiKey);
-
+    if (!industry) {
+      throw new Error('Industry is required');
+    }
+    
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -223,20 +243,41 @@ async function generateContent(industry: string, toneName = 'professional', temp
             content: `Generate a concise, engaging post about an important insight or trend in the ${industry} industry. The content should be in a ${toneName} tone and suitable for professional social media.`
           }
         ],
-        temperature: temperature, // Use the temperature parameter
+        temperature: temperature,
       }),
     });
 
     if (!response.ok) {
-      const result = await response.json();
-      console.error("OpenAI error:", result);
-      throw new Error(`OpenAI API error: ${result.error?.message || result.message}`);
+      const errorData = await response.json();
+      throw new Error(`OpenAI API error: ${errorData.error?.message || response.statusText}`);
     }
-
-    const json = await response.json();
-    const snippet = json.choices[0].message.content;
-
-    return { snippet };
+    
+    const data = await response.json();
+    const generatedText = data.choices[0]?.message?.content?.trim();
+    
+    if (!generatedText) {
+      throw new Error('No content generated');
+    }
+    
+    // Extract a title and content
+    const lines = generatedText.split('\n').filter(line => line.trim());
+    let title = lines[0];
+    let content = lines.slice(1).join('\n');
+    
+    // If the first line doesn't look like a title, generate one
+    if (title.length > 100 || !title.trim()) {
+      title = `${industry} Industry Insight`;
+      content = generatedText;
+    }
+    
+    // Clean up title if it has markdown-style headers
+    title = title.replace(/^#+\s+/, '').replace(/^\*\*|\*\*$/g, '');
+    
+    return {
+      title,
+      content,
+      snippet: generatedText.substring(0, 300) + (generatedText.length > 300 ? '...' : '')
+    };
   } catch (error) {
     console.error("Error generating content:", error);
     throw error;

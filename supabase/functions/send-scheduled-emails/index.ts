@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.33.1';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { format } from "https://deno.land/std@0.168.0/datetime/mod.ts";
@@ -11,6 +12,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
 const mailchimpApiKey = Deno.env.get('MAILCHIMP_API_KEY')!;
 const mailchimpServerPrefix = Deno.env.get('MAILCHIMP_SERVER_PREFIX')!;
+const mailchimpListId = Deno.env.get('MAILCHIMP_LIST_ID')!;
 const fromEmail = Deno.env.get('FROM_EMAIL') || 'noreply@example.com';
 
 const corsHeaders = {
@@ -18,7 +20,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Update the scheduled-emails function to include temperature
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -26,6 +27,18 @@ serve(async (req) => {
   }
 
   try {
+    // Check if required environment variables are set
+    if (!mailchimpServerPrefix || !mailchimpListId) {
+      console.error("Missing required environment variables:", { 
+        mailchimpServerPrefix: !!mailchimpServerPrefix, 
+        mailchimpListId: !!mailchimpListId 
+      });
+      return new Response(
+        JSON.stringify({ error: 'Mailchimp API configuration is incomplete. Please check MAILCHIMP_SERVER_PREFIX and MAILCHIMP_LIST_ID environment variables.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     // Check if we're forcing a send for specific users
     const { users, forceSendToday } = await req.json().catch(() => ({ users: null, forceSendToday: false }));
     
@@ -118,7 +131,7 @@ serve(async (req) => {
         // Format the email content based on the template
         const emailContent = formatEmailContent(content, user.template, user.tone_name);
         
-        // Send the email
+        // Send the email using the correct Mailchimp URL
         await sendEmail(user.email, `Your ${user.industry} Industry Update`, emailContent);
         
         // Record the sent email
@@ -162,7 +175,6 @@ serve(async (req) => {
   }
 });
 
-// Update the generateContent function to use temperature
 async function generateContent(industry: string, toneName = 'professional', temperature = 0.7) {
   try {
     console.log(`Generating content for industry: ${industry}, tone: ${toneName}, temperature: ${temperature}`);
@@ -265,8 +277,12 @@ function formatEmailContent(content: { title: string, content: string }, templat
 
 async function sendEmail(to: string, subject: string, htmlContent: string) {
   try {
-    // Use Mailchimp Transactional API (formerly Mandrill)
-    const response = await fetch(`https://${mailchimpServerPrefix}.api.mailchimp.com/3.0/messages/send`, {
+    // Construct the proper Mailchimp API URL
+    const mailchimpUrl = `https://${mailchimpServerPrefix}.api.mailchimp.com/3.0`;
+    console.log(`Using Mailchimp API URL: ${mailchimpUrl} to send email to ${to}`);
+    
+    // Use Mailchimp Transactional API
+    const response = await fetch(`${mailchimpUrl}/messages/send`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${mailchimpApiKey}`,
