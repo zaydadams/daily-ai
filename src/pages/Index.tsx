@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { IndustrySelect } from "@/components/IndustrySelect";
 import { useToast } from "@/components/ui/use-toast";
@@ -26,7 +27,7 @@ const Index = () => {
   const [autoGenerateEnabled, setAutoGenerateEnabled] = useState(true);
   const [toneName, setToneName] = useState("professional");
   const [temperature, setTemperature] = useState(0.7);
-  const [subscriptionStatus, setSubscriptionStatus = useState<'active' | 'inactive' | 'expired'>('inactive');
+  const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'inactive' | 'expired'>('inactive');
   const { toast } = useToast();
 
   useEffect(() => {
