@@ -1,7 +1,7 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.33.1';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { format } from "https://deno.land/std@0.168.0/datetime/mod.ts";
+import { Resend } from "npm:resend@2.0.0";
 
 // Initialize Supabase
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -10,10 +10,10 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Get API keys from environment variables
 const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
-const mailchimpApiKey = Deno.env.get('MAILCHIMP_API_KEY')!;
-const mailchimpServerPrefix = Deno.env.get('MAILCHIMP_SERVER_PREFIX')!;
-const mailchimpListId = Deno.env.get('MAILCHIMP_LIST_ID')!;
+const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
 const fromEmail = Deno.env.get('FROM_EMAIL') || 'noreply@example.com';
+
+const resend = new Resend(resendApiKey);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,17 +27,7 @@ serve(async (req) => {
   }
 
   try {
-    // Check if required environment variables are set
-    if (!mailchimpServerPrefix || !mailchimpListId) {
-      console.error("Missing required environment variables:", { 
-        mailchimpServerPrefix: !!mailchimpServerPrefix, 
-        mailchimpListId: !!mailchimpListId 
-      });
-      return new Response(
-        JSON.stringify({ error: 'Mailchimp API configuration is incomplete. Please check MAILCHIMP_SERVER_PREFIX and MAILCHIMP_LIST_ID environment variables.' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    console.log("Starting send-scheduled-emails function");
     
     // Check if we're forcing a send for specific users
     const { users, forceSendToday } = await req.json().catch(() => ({ users: null, forceSendToday: false }));
@@ -109,7 +99,7 @@ serve(async (req) => {
         
         // Check if we've already sent an email to this user today
         if (!forceSendToday) {
-          const today = format(now, 'yyyy-MM-dd');
+          const today = format(new Date(), 'yyyy-MM-dd');
           
           const { data: existingEmails, error: emailCheckError } = await supabase
             .from('sent_emails')
@@ -131,7 +121,7 @@ serve(async (req) => {
         // Format the email content based on the template
         const emailContent = formatEmailContent(content, user.template, user.tone_name);
         
-        // Send the email using the correct Mailchimp URL
+        // Send the email using Resend
         await sendEmail(user.email, `Your ${user.industry} Industry Update`, emailContent);
         
         // Record the sent email
@@ -277,36 +267,23 @@ function formatEmailContent(content: { title: string, content: string }, templat
 
 async function sendEmail(to: string, subject: string, htmlContent: string) {
   try {
-    // Construct the proper Mailchimp API URL
-    const mailchimpUrl = `https://${mailchimpServerPrefix}.api.mailchimp.com/3.0`;
-    console.log(`Using Mailchimp API URL: ${mailchimpUrl} to send email to ${to}`);
+    console.log(`Sending email to ${to} using Resend`);
     
-    // Use Mailchimp Transactional API
-    const response = await fetch(`${mailchimpUrl}/messages/send`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${mailchimpApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: {
-          html: htmlContent,
-          subject: subject,
-          from_email: fromEmail,
-          from_name: 'Industry Insights',
-          to: [{ email: to, type: 'to' }],
-        },
-      }),
+    // Use Resend to send email
+    const emailResponse = await resend.emails.send({
+      from: 'Writer Expert <shaun@writer.expert>',
+      to: [to],
+      subject: subject,
+      html: htmlContent,
+      reply_to: "shaun@writer.expert"
     });
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Mailchimp API error: ${JSON.stringify(errorData)}`);
+    if (!emailResponse || emailResponse.error) {
+      throw new Error(`Resend error: ${emailResponse?.error?.message || 'Unknown error'}`);
     }
     
-    const data = await response.json();
-    console.log(`Email sent to ${to}, Mailchimp response:`, data);
-    return data;
+    console.log(`Email sent to ${to}, Resend response:`, emailResponse);
+    return emailResponse;
   } catch (error) {
     console.error(`Error sending email to ${to}:`, error);
     throw error;
