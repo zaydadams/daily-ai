@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { Resend } from "npm:resend@2.0.0";
@@ -73,6 +74,12 @@ serve(async (req) => {
         });
       }
     }
+    
+    // Return success if we just saved preferences without sending email
+    return new Response(JSON.stringify({ success: true, message: "Preferences saved successfully" }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+    
   } catch (error) {
     console.error("Error processing request:", error);
     return new Response(JSON.stringify({ error: `Server error: ${error.message}` }), {
