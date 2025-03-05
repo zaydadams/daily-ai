@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.33.1';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { format } from "https://deno.land/std@0.168.0/datetime/mod.ts";
@@ -115,14 +116,18 @@ serve(async (req) => {
           }
         }
         
-        // Generate content with temperature parameter
-        const content = await generateContent(user.industry, user.tone_name, temperature);
+        // Generate 3 different content options for the email
+        const contentOptions = [];
+        for (let i = 0; i < 3; i++) {
+          const content = await generateContent(user.industry, user.tone_name, temperature);
+          contentOptions.push(content);
+        }
         
-        // Format the email content based on the template
-        const emailContent = formatEmailContent(content, user.template, user.tone_name);
+        // Format the email content based on the template with 3 options
+        const emailContent = formatEmailContent(contentOptions, user.template, user.tone_name, user.industry);
         
         // Send the email using Resend
-        await sendEmail(user.email, `Your ${user.industry} Industry Update`, emailContent);
+        await sendEmail(user.email, `Your ${user.industry} Industry Update - 3 Content Options`, emailContent);
         
         // Record the sent email
         const { error: recordError } = await supabase
@@ -130,7 +135,7 @@ serve(async (req) => {
           .insert({
             email: user.email,
             industry: user.industry,
-            content_snippet: content.snippet,
+            content_snippet: contentOptions[0].snippet,
             template: user.template
           });
           
@@ -232,33 +237,162 @@ async function generateContent(industry: string, toneName = 'professional', temp
   }
 }
 
-function formatEmailContent(content: { title: string, content: string }, template = 'bullet-points-style-x-style', tone = 'professional') {
+function formatEmailContent(contentOptions: Array<{ title: string, content: string }>, template = 'bullet-points-style-x-style', tone = 'professional', industry = 'your industry') {
   // Extract format and style from template
   const [formatPart, stylePart] = template.split('-style-');
   const format = formatPart || 'bullet-points';
   const style = stylePart || 'x-style';
   
-  // Basic HTML wrapper
+  const today = new Date();
+  const formattedDate = today.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+  
+  // Modernized HTML email template with 3 content options
   const htmlContent = `
-    <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-          h1, h2, h3 { color: #2c3e50; }
-          .content { margin: 20px 0; }
-          .footer { margin-top: 30px; font-size: 12px; color: #7f8c8d; border-top: 1px solid #eee; padding-top: 20px; }
-        </style>
-      </head>
-      <body>
-        <h2>${content.title}</h2>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${industry} Industry Update</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          background-color: #f9f9f9;
+          margin: 0;
+          padding: 0;
+        }
+        .email-container {
+          max-width: 600px;
+          margin: 0 auto;
+          background-color: #ffffff;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        }
+        .header {
+          background-color: #2c3e50;
+          color: #ffffff;
+          padding: 20px;
+          text-align: center;
+        }
+        .date {
+          color: #ecf0f1;
+          font-size: 14px;
+          margin-top: 5px;
+        }
+        .content {
+          padding: 25px;
+        }
+        .option {
+          margin-bottom: 30px;
+          border-bottom: 1px solid #eee;
+          padding-bottom: 25px;
+        }
+        .option:last-child {
+          border-bottom: none;
+          margin-bottom: 0;
+        }
+        h1 {
+          color: #ffffff;
+          font-size: 24px;
+          margin: 0;
+          font-weight: 600;
+        }
+        h2 {
+          color: #2c3e50;
+          font-size: 20px;
+          margin-top: 0;
+          margin-bottom: 15px;
+          font-weight: 600;
+        }
+        .option-label {
+          display: inline-block;
+          background-color: #3498db;
+          color: white;
+          padding: 3px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          margin-bottom: 10px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        p {
+          margin: 0 0 15px;
+          font-size: 16px;
+        }
+        .footer {
+          background-color: #f5f5f5;
+          padding: 20px;
+          text-align: center;
+          font-size: 12px;
+          color: #7f8c8d;
+          border-top: 1px solid #eee;
+        }
+        .footer p {
+          margin: 5px 0;
+          font-size: 12px;
+        }
+        .cta-button {
+          display: inline-block;
+          background-color: #2980b9;
+          color: white;
+          text-decoration: none;
+          padding: 10px 20px;
+          border-radius: 4px;
+          font-weight: 500;
+          margin-top: 10px;
+          margin-bottom: 5px;
+        }
+        .cta-button:hover {
+          background-color: #3498db;
+        }
+        @media only screen and (max-width: 600px) {
+          .email-container {
+            width: 100%;
+            border-radius: 0;
+          }
+          .content {
+            padding: 15px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="header">
+          <h1>${industry} Industry Update</h1>
+          <div class="date">${formattedDate}</div>
+        </div>
+        
         <div class="content">
-          ${content.content}
+          <p>Here are three content options for your ${industry} business. Select the one that resonates most with your audience:</p>
+          
+          ${contentOptions.map((content, index) => `
+            <div class="option">
+              <div class="option-label">Option ${index + 1}</div>
+              <h2>${content.title}</h2>
+              <div>${content.content.replace(/\n/g, '<br>')}</div>
+              
+              <a href="#" class="cta-button">Use This Content</a>
+            </div>
+          `).join('')}
+          
+          <p>These insights are generated based on current industry trends and tailored to your preferences.</p>
         </div>
+        
         <div class="footer">
-          <p>This content was generated based on trends in the industry you selected.</p>
-          <p>You're receiving this because you subscribed to industry updates.</p>
+          <p>You're receiving this because you subscribed to ${industry} industry updates.</p>
+          <p>© ${new Date().getFullYear()} Writer Expert | <a href="#">Unsubscribe</a> | <a href="#">View in Browser</a></p>
         </div>
-      </body>
+      </div>
+    </body>
     </html>
   `;
   

@@ -51,19 +51,29 @@ serve(async (req) => {
     if (sendNow) {
       console.log("Sending email immediately");
       try {
-        const content = await generateContent(industry, toneName, temperature);
-        const htmlContent = formatContentAsHtml(content.snippet, industry, template);
+        // Generate 3 content options
+        const contentOptions = [];
+        for (let i = 0; i < 3; i++) {
+          const content = await generateContent(industry, toneName, temperature);
+          contentOptions.push(content);
+        }
+
+        const htmlContent = formatContentAsHtml(contentOptions, industry, template);
 
         const response = await resend.emails.send({
           from: 'Writer Expert <shaun@writer.expert>',
           to: [email],
-          subject: `Your ${industry} Content Update - From Writer Expert`,
+          subject: `Your ${industry} Content Update - 3 Content Options`,
           html: htmlContent,
           reply_to: "shaun@writer.expert"
         });
 
         console.log('Email sent successfully:', response);
-        return new Response(JSON.stringify({ success: true, message: "Email sent successfully", emailContent: content.snippet }), {
+        return new Response(JSON.stringify({ 
+          success: true, 
+          message: "Email sent successfully", 
+          emailContent: contentOptions[0].snippet
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       } catch (error) {
@@ -123,42 +133,182 @@ async function generateContent(industry, toneName = 'professional', temperature 
     }
 
     const json = await response.json();
-    const snippet = json.choices[0].message.content;
+    const generatedText = json.choices[0].message.content.trim();
+    
+    // Extract a title and content
+    const lines = generatedText.split('\n').filter(line => line.trim());
+    let title = lines[0];
+    let content = lines.slice(1).join('\n');
+    
+    // If the first line doesn't look like a title, generate one
+    if (title.length > 100 || !title.trim()) {
+      title = `${industry} Industry Insight`;
+      content = generatedText;
+    }
+    
+    // Clean up title if it has markdown-style headers
+    title = title.replace(/^#+\s+/, '').replace(/^\*\*|\*\*$/g, '');
 
-    return { snippet };
+    return {
+      title,
+      content,
+      snippet: generatedText.substring(0, 300) + (generatedText.length > 300 ? '...' : '')
+    };
   } catch (error) {
     console.error("Error generating content:", error);
     throw error;
   }
 }
 
-// Function to format content as an HTML email
-function formatContentAsHtml(content, industry, template) {
+// Function to format content options as a modern HTML email
+function formatContentAsHtml(contentOptions, industry, template) {
+  const today = new Date();
+  const formattedDate = today.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+
   return `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Your ${industry} Content</title>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${industry} Industry Update</title>
       <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-        h1 { color: #2b6fe5; }
-        .content-block { background: #f9f9f9; border-left: 4px solid #2b6fe5; padding: 15px; margin: 25px 0; }
-        .footer { margin-top: 40px; font-size: 12px; color: #888; border-top: 1px solid #eee; padding-top: 20px; }
+        body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          background-color: #f9f9f9;
+          margin: 0;
+          padding: 0;
+        }
+        .email-container {
+          max-width: 600px;
+          margin: 0 auto;
+          background-color: #ffffff;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        }
+        .header {
+          background-color: #2c3e50;
+          color: #ffffff;
+          padding: 20px;
+          text-align: center;
+        }
+        .date {
+          color: #ecf0f1;
+          font-size: 14px;
+          margin-top: 5px;
+        }
+        .content {
+          padding: 25px;
+        }
+        .option {
+          margin-bottom: 30px;
+          border-bottom: 1px solid #eee;
+          padding-bottom: 25px;
+        }
+        .option:last-child {
+          border-bottom: none;
+          margin-bottom: 0;
+        }
+        h1 {
+          color: #ffffff;
+          font-size: 24px;
+          margin: 0;
+          font-weight: 600;
+        }
+        h2 {
+          color: #2c3e50;
+          font-size: 20px;
+          margin-top: 0;
+          margin-bottom: 15px;
+          font-weight: 600;
+        }
+        .option-label {
+          display: inline-block;
+          background-color: #3498db;
+          color: white;
+          padding: 3px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          margin-bottom: 10px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        p {
+          margin: 0 0 15px;
+          font-size: 16px;
+        }
+        .footer {
+          background-color: #f5f5f5;
+          padding: 20px;
+          text-align: center;
+          font-size: 12px;
+          color: #7f8c8d;
+          border-top: 1px solid #eee;
+        }
+        .footer p {
+          margin: 5px 0;
+          font-size: 12px;
+        }
+        .cta-button {
+          display: inline-block;
+          background-color: #2980b9;
+          color: white;
+          text-decoration: none;
+          padding: 10px 20px;
+          border-radius: 4px;
+          font-weight: 500;
+          margin-top: 10px;
+          margin-bottom: 5px;
+        }
+        .cta-button:hover {
+          background-color: #3498db;
+        }
+        @media only screen and (max-width: 600px) {
+          .email-container {
+            width: 100%;
+            border-radius: 0;
+          }
+          .content {
+            padding: 15px;
+          }
+        }
       </style>
     </head>
     <body>
-      <h1>Your ${industry} Content</h1>
-      <p>Here is your custom content for your ${industry} business:</p>
-      <div class="content-block">
-        ${content.replace(/\n/g, '<br>')}
-      </div>
-      <div class="footer">
-        <p>This content was generated based on your preferences.</p>
-        <p>Template: ${template}</p>
-        <p>Industry: ${industry}</p>
-        <p>&copy; ${new Date().getFullYear()} Writer Expert</p>
+      <div class="email-container">
+        <div class="header">
+          <h1>${industry} Industry Update</h1>
+          <div class="date">${formattedDate}</div>
+        </div>
+        
+        <div class="content">
+          <p>Here are three content options for your ${industry} business. Select the one that resonates most with your audience:</p>
+          
+          ${contentOptions.map((content, index) => `
+            <div class="option">
+              <div class="option-label">Option ${index + 1}</div>
+              <h2>${content.title}</h2>
+              <div>${content.content.replace(/\n/g, '<br>')}</div>
+              
+              <a href="#" class="cta-button">Use This Content</a>
+            </div>
+          `).join('')}
+          
+          <p>These insights are generated based on current industry trends and tailored to your preferences.</p>
+        </div>
+        
+        <div class="footer">
+          <p>You're receiving this because you subscribed to ${industry} industry updates.</p>
+          <p>© ${new Date().getFullYear()} Writer Expert | <a href="#">Unsubscribe</a> | <a href="#">View in Browser</a></p>
+        </div>
       </div>
     </body>
     </html>
