@@ -5,13 +5,13 @@ import { format } from "https://deno.land/std@0.168.0/datetime/mod.ts";
 import { Resend } from "npm:resend@2.0.0";
 
 // Initialize Supabase
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabaseUrl = Deno.env.get('SUPABASE_URL');
+const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY');
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Get API keys from environment variables
-const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
-const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
+const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+const resendApiKey = Deno.env.get('RESEND_API_KEY');
 const fromEmail = 'Writer Expert <shaun@writer.expert>';
 
 const resend = new Resend(resendApiKey);
