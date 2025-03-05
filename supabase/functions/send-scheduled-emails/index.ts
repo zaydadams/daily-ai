@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.33.1';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { format } from "https://deno.land/std@0.168.0/datetime/mod.ts";
@@ -11,7 +12,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Get API keys from environment variables
 const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
 const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
-const fromEmail = Deno.env.get('FROM_EMAIL') || 'noreply@example.com';
+const fromEmail = 'Writer Expert <shaun@writer.expert>';
 
 const resend = new Resend(resendApiKey);
 
@@ -259,6 +260,55 @@ function formatEmailContent(contentOptions: Array<{ title: string, content: stri
     month: 'long', 
     day: 'numeric' 
   });
+
+  // Function to format content based on the template style
+  const formatContentBasedOnTemplate = (content: string, format: string) => {
+    const paragraphs = content.split('\n\n').filter(p => p.trim());
+    
+    if (format === 'bullet-points') {
+      // Convert paragraphs to bullet points if they aren't already
+      return paragraphs.map(p => {
+        if (p.startsWith('• ') || p.startsWith('* ') || p.startsWith('- ')) {
+          return p;
+        }
+        // Split into sentences and make each sentence a bullet point
+        const sentences = p.split('. ').filter(s => s.trim());
+        return sentences.map(s => `• ${s}${!s.endsWith('.') ? '.' : ''}`).join('<br>');
+      }).join('<br><br>');
+    } else if (format === 'numbered-list') {
+      // Convert paragraphs to numbered list if they aren't already
+      let numberedContent = '';
+      let counter = 1;
+      
+      for (const p of paragraphs) {
+        if (p.match(/^\d+\.\s/)) {
+          // Already numbered
+          numberedContent += p + '<br><br>';
+        } else {
+          // Split into sentences and make each sentence a numbered point
+          const sentences = p.split('. ').filter(s => s.trim());
+          for (const s of sentences) {
+            numberedContent += `${counter}. ${s}${!s.endsWith('.') ? '.' : ''}<br>`;
+            counter++;
+          }
+          numberedContent += '<br>';
+        }
+      }
+      
+      return numberedContent;
+    } else if (format === 'tips-format') {
+      // Format as tips
+      return paragraphs.map((p, idx) => {
+        if (p.startsWith('Tip') || p.startsWith('✓') || p.match(/^\d+\.\s/)) {
+          return p;
+        }
+        return `✓ Tip ${idx + 1}: ${p}`;
+      }).join('<br><br>');
+    }
+    
+    // Default - return as paragraphs
+    return paragraphs.join('<br><br>');
+  };
   
   // Modernized HTML email template with 3 content options
   const htmlContent = `
@@ -336,6 +386,17 @@ function formatEmailContent(contentOptions: Array<{ title: string, content: stri
           margin: 0 0 15px;
           font-size: 16px;
         }
+        .content-text {
+          line-height: 1.8;
+        }
+        ul, ol {
+          margin-top: 10px;
+          margin-bottom: 15px;
+          padding-left: 20px;
+        }
+        li {
+          margin-bottom: 8px;
+        }
         .footer {
           background-color: #f5f5f5;
           padding: 20px;
@@ -387,7 +448,9 @@ function formatEmailContent(contentOptions: Array<{ title: string, content: stri
             <div class="option">
               <div class="option-label">Option ${index + 1}</div>
               <h2>${content.title}</h2>
-              <div>${content.content.replace(/\n/g, '<br>')}</div>
+              <div class="content-text">
+                ${formatContentBasedOnTemplate(content.content, format)}
+              </div>
               
               <a href="#" class="cta-button">Use This Content</a>
             </div>
@@ -412,9 +475,9 @@ async function sendEmail(to: string, subject: string, htmlContent: string) {
   try {
     console.log(`Sending email to ${to} using Resend`);
     
-    // Use Resend to send email
+    // Use Resend to send email with the correct from address
     const emailResponse = await resend.emails.send({
-      from: 'Writer Expert <shaun@writer.expert>',
+      from: fromEmail,
       to: [to],
       subject: subject,
       html: htmlContent,
