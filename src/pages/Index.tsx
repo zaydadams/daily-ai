@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { IndustrySelect } from "@/components/IndustrySelect";
 import { useToast } from "@/components/ui/use-toast";
@@ -207,65 +206,45 @@ const Index = () => {
         throw error;
       }
 
-      // If auto-generate is enabled, always send today's email
-      if (autoGenerateEnabled) {
-        try {
-          // Show toast that we're processing today's email
-          toast({
-            title: "Processing Today's Email",
-            description: "Since you've just set up or changed your preferences, we're preparing today's content delivery.",
-            duration: 5000,
-          });
-          
-          // Call the send-scheduled-emails function to force today's email
-          const { error: scheduleError, data } = await supabase.functions.invoke('send-scheduled-emails', {
-            body: { 
-              users: [{
-                email: userEmail,
-                industry: selectedIndustry,
-                template: selectedTemplate,
-                timezone: timezone,
-                auto_generate: true, // Force to true for this specific send
-                tone_name: toneName,
-                temperature: temperature
-              }],
-              forceSendToday: true
-            },
-          });
-          
-          if (scheduleError) {
-            console.error("Error sending today's scheduled email:", scheduleError);
-            toast({
-              title: "Error",
-              description: `Failed to send today's email: ${scheduleError.message || "Unknown error"}`,
-              variant: "destructive",
-              duration: 5000,
-            });
-          } else {
-            console.log("Send scheduled email response:", data);
-            toast({
-              title: "Today's Email Sent",
-              description: "Your first content has been sent to your email address.",
-              duration: 5000,
-            });
-          }
-        } catch (scheduleError) {
-          console.error("Error scheduling today's email:", scheduleError);
-          toast({
-            title: "Error",
-            description: `Failed to send today's email: ${scheduleError.message || "Unknown error"}`,
-            variant: "destructive",
-            duration: 5000,
-          });
-        }
+      // Remove the automatic email sending on preference save
+      // Instead, show a message about the scheduled delivery time
+      
+      // Calculate the next delivery time in user's timezone
+      const now = new Date();
+      const [hours, minutes] = deliveryTime.split(':').map(Number);
+      
+      let deliveryDate = new Date(now);
+      deliveryDate.setHours(hours, minutes, 0, 0);
+      
+      // If the time has already passed today, it will be scheduled for tomorrow
+      if (deliveryDate < now) {
+        deliveryDate.setDate(deliveryDate.getDate() + 1);
       }
+      
+      // Format the date for display
+      const timeOptions: Intl.DateTimeFormatOptions = { 
+        hour: 'numeric', 
+        minute: 'numeric',
+        hour12: true
+      };
+      
+      const dateOptions: Intl.DateTimeFormatOptions = {
+        weekday: 'long',
+        month: 'short', 
+        day: 'numeric'
+      };
+      
+      const formattedTime = new Intl.DateTimeFormat('en-US', timeOptions).format(deliveryDate);
+      const formattedDate = new Intl.DateTimeFormat('en-US', dateOptions).format(deliveryDate);
+      
+      const scheduleMessage = autoGenerateEnabled
+        ? `Your content will be delivered at ${formattedTime} on ${formattedDate} in your local timezone.`
+        : "Auto-generation is disabled. You can send content manually using the 'Send Email Now' button.";
 
       toast({
-        title: "Success!",
-        description: autoGenerateEnabled 
-          ? "Your preferences have been saved. You'll receive daily content at " + deliveryTime + " in your timezone."
-          : "Your preferences have been saved. Auto-generation is disabled, but you can send content manually.",
-        duration: 5000,
+        title: "Preferences Saved Successfully",
+        description: scheduleMessage,
+        duration: 6000,
       });
     } catch (error) {
       console.error('Error subscribing:', error);

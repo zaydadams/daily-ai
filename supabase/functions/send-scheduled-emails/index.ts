@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.33.1';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { format } from "https://deno.land/std@0.168.0/datetime/mod.ts";
@@ -35,13 +34,13 @@ serve(async (req) => {
     
     let usersToProcess = [];
     
-    if (users && Array.isArray(users) && users.length > 0) {
-      // If specific users are provided, use them
-      console.log(`Processing specific users: ${users.length}`);
+    if (users && Array.isArray(users) && users.length > 0 && forceSendToday) {
+      // If specific users are provided AND forceSendToday is true, use them
+      console.log(`Processing specific users with forceSendToday: ${users.length}`);
       usersToProcess = users;
     } else {
-      // Otherwise fetch users who should receive emails now
-      console.log("Fetching users who should receive emails now");
+      // Otherwise fetch users who should receive emails now based on their delivery time
+      console.log("Fetching users who should receive emails now based on delivery time");
       
       // Get all users with preferences
       const { data: allUsers, error: fetchError } = await supabase
@@ -56,6 +55,11 @@ serve(async (req) => {
       const now = new Date();
       
       usersToProcess = allUsers.filter(user => {
+        // Skip users who have auto-generate disabled
+        if (!user.auto_generate) {
+          return false;
+        }
+        
         if (!user.delivery_time || !user.timezone) {
           return false;
         }
@@ -70,14 +74,19 @@ serve(async (req) => {
           const userMinute = userLocalTime.getMinutes();
           
           // Check if current time is within 5 minutes of delivery time
-          return Math.abs(userHour - hours) === 0 && Math.abs(userMinute - minutes) < 5;
+          const hourMatch = userHour === hours;
+          const minuteMatch = Math.abs(userMinute - minutes) < 5;
+          
+          console.log(`User ${user.email}: Current time in timezone ${user.timezone}: ${userHour}:${userMinute}, delivery time: ${hours}:${minutes}, match: ${hourMatch && minuteMatch}`);
+          
+          return hourMatch && minuteMatch;
         } catch (error) {
           console.error(`Error processing time for user ${user.email}:`, error);
           return false;
         }
       });
       
-      console.log(`Found ${usersToProcess.length} users to process`);
+      console.log(`Found ${usersToProcess.length} users to process based on delivery time`);
     }
 
     // Track errors for reporting
