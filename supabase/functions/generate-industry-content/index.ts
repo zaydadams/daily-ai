@@ -15,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const { industry } = await req.json();
+    const { industry, temperature = 0.7 } = await req.json();
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -35,6 +35,7 @@ serve(async (req) => {
             content: `Generate 9 items for the ${industry} industry: 3 daily topics, 3 hooks, and 3 tips. Keep each item's title under 60 characters and description under 100 characters.`
           }
         ],
+        temperature: temperature, // Use the temperature parameter
       }),
     });
 
