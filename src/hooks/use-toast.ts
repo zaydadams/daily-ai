@@ -1,3 +1,4 @@
+
 import { toast as sonnerToast } from "sonner";
 import { useState, useEffect } from "react";
 
@@ -20,6 +21,7 @@ type ToastProps = ToastOptions & {
   title?: string;
   description?: string;
   action?: React.ReactNode;
+  variant?: "default" | "destructive";
 };
 
 export function useToast() {
