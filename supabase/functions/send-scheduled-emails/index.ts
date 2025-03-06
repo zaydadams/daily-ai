@@ -160,29 +160,62 @@ serve(async (req) => {
         await detailedLog(`Email sent successfully to ${user.email}`, response);
         results.push({ email: user.email, status: 'success', id: response.id });
 
-        // Prepare content history payload
-        const contentHistoryPayload = {
-          email: user.email,
-          user_id: user.user_id, // Assuming user_id is in the data from SQL
-          industry: user.industry,
-          template: user.template,
-          content: contentOptions[0].content,
-          sent_at: new Date().toISOString(),
-          tone_name: user.tone_name
-        };
+        // Look up the user first to ensure we have their ID
+        const { data: userData, error: userError } = await supabase
+          .from('user_industry_preferences')
+          .select('user_id')
+          .eq('email', user.email)
+          .single();
 
-        // Insert content history
-        const { error: historyError, data: insertedData } = await supabase
-          .from('content_history')
-          .insert(contentHistoryPayload);
-
-        if (historyError) {
-          await detailedLog(`Error inserting content history for ${user.email}`, {
-            error: historyError,
-            payload: contentHistoryPayload
-          });
+        if (userError) {
+          await detailedLog(`Error fetching user_id for ${user.email}`, userError);
+          // Instead of failing, we'll use the email as the user_id
+          const contentHistoryPayload = {
+            email: user.email,
+            user_id: user.email, // Use email as user_id if lookup fails
+            industry: user.industry,
+            template: user.template,
+            content: contentOptions[0].content,
+            sent_at: new Date().toISOString(),
+            tone_name: user.tone_name
+          };
+          
+          const { error: historyError } = await supabase
+            .from('content_history')
+            .insert(contentHistoryPayload);
+            
+          if (historyError) {
+            await detailedLog(`Error inserting content history for ${user.email}`, {
+              error: historyError,
+              payload: contentHistoryPayload
+            });
+          } else {
+            await detailedLog(`Successfully inserted content history for ${user.email} using email as user_id`);
+          }
         } else {
-          await detailedLog(`Successfully inserted content history for ${user.email}`, insertedData);
+          // User found, use their actual user_id
+          const contentHistoryPayload = {
+            email: user.email,
+            user_id: userData.user_id,
+            industry: user.industry,
+            template: user.template,
+            content: contentOptions[0].content,
+            sent_at: new Date().toISOString(),
+            tone_name: user.tone_name
+          };
+          
+          const { error: historyError } = await supabase
+            .from('content_history')
+            .insert(contentHistoryPayload);
+            
+          if (historyError) {
+            await detailedLog(`Error inserting content history for ${user.email}`, {
+              error: historyError,
+              payload: contentHistoryPayload
+            });
+          } else {
+            await detailedLog(`Successfully inserted content history for ${user.email}`);
+          }
         }
       } catch (userError) {
         await detailedLog(`Error processing user ${user.email}`, userError);
