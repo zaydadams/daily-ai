@@ -482,7 +482,7 @@ async function sendEmail(to: string, subject: string, htmlContent: string) {
     
     // Use Resend to send email with the correct from address
     const emailResponse = await resend.emails.send({
-      from: fromEmail,
+      from: 'Writer Expert <shaun@writer.expert>',
       to: [to],
       subject: subject,
       html: htmlContent,
