@@ -116,11 +116,16 @@ serve(async (req) => {
         if (!forceSendToday) {
           const today = format(new Date(), 'yyyy-MM-dd');
           
-          const { data: existingEmails, error: emailCheckError } = await supabase
-            .from('content_history')
-            .select('*')
-            .eq('email', user.email)
-            .gte('sent_at', today);
+      // Save to Supabase for record-keeping
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      try {
+        const { error } = await supabase.from('content_history').insert({
+          email: recipientEmail,
+          industry: industry,
+          template: template,
+          content: content,
+          sent_at: new Date().toISOString(),
+        });
             
           if (emailCheckError) {
             console.error(`Error checking sent emails for ${user.email}:`, emailCheckError);
