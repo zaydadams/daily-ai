@@ -1,115 +1,31 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.33.1';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { Resend } from "npm:resend@2.0.0";
 
-// Logging utility
-function logger(message: string, ...args: any[]) {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${message}`, ...args);
-}
-
-// Error logging utility
-function errorLogger(context: string, error: any) {
-  logger(`ERROR in ${context}:`, {
-    message: error.message,
-    name: error.name,
-    stack: error.stack
-  });
-}
-
-// Verify environment variables
-function validateEnvironmentVariables() {
-  const requiredVars = [
-    'SUPABASE_URL',
-    'SUPABASE_ANON_KEY',
-    'OPENAI_API_KEY',
-    'RESEND_API_KEY'
-  ];
-
-  requiredVars.forEach(varName => {
-    if (!Deno.env.get(varName)) {
-      throw new Error(`Missing environment variable: ${varName}`);
-    }
-  });
-
-  logger('All required environment variables are present');
-}
-
-// Initialize environment variables
-validateEnvironmentVariables();
-
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
-const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
-
-// Initialize clients
-const supabase = createClient(supabaseUrl, supabaseKey);
-const resend = new Resend(resendApiKey);
-
-// CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Determine if it's time to send email for a user
-function isTimeToSendEmail(user: any): boolean {
+// Environment variables
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
+
+// Initialize clients
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const resend = new Resend(RESEND_API_KEY);
+
+// Function to generate content using OpenAI
+async function generateContent(industry, toneName = 'professional', temperature = 0.7) {
   try {
-    // Skip if auto-generate is disabled
-    if (!user.auto_generate) {
-      logger(`Skipping ${user.email} - auto-generate disabled`);
-      return false;
-    }
-
-    // Validate delivery time and timezone
-    if (!user.delivery_time || !user.timezone) {
-      logger(`Skipping ${user.email} - missing delivery time or timezone`);
-      return false;
-    }
-
-    // Parse delivery time
-    const [targetHours, targetMinutes] = user.delivery_time.split(':').map(Number);
-
-    // Get current time in user's timezone
-    const now = new Date();
-    const userLocalTime = new Intl.DateTimeFormat('en-US', {
-      timeZone: user.timezone,
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: false
-    }).format(now);
-
-    const [currentHour, currentMinute] = userLocalTime.split(':').map(Number);
-
-    // Check if current time matches delivery time within 5 minutes
-    const hourMatch = currentHour === targetHours;
-    const minuteMatch = Math.abs(currentMinute - targetMinutes) < 5;
-
-    logger(`Email timing check for ${user.email}:`, {
-      timezone: user.timezone,
-      deliveryTime: user.delivery_time,
-      currentTime: userLocalTime,
-      hourMatch,
-      minuteMatch
-    });
-
-    return hourMatch && minuteMatch;
-  } catch (error) {
-    errorLogger(`Time check error for ${user.email}`, error);
-    return false;
-  }
-}
-
-// Generate content for email
-async function generateContent(industry: string, toneName = 'professional', temperature = 0.7) {
-  try {
-    logger(`Generating content for ${industry} industry`);
-
+    console.log(`Generating content for industry: ${industry}, tone: ${toneName}, temperature: ${temperature}`);
+    
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -127,71 +43,43 @@ async function generateContent(industry: string, toneName = 'professional', temp
         temperature: temperature,
       }),
     });
-    
+
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`OpenAI API error: ${errorData.error?.message || response.statusText}`);
+      const result = await response.json();
+      console.error("OpenAI error:", result);
+      throw new Error(`OpenAI API error: ${result.error?.message || result.message}`);
     }
+
+    const json = await response.json();
+    const generatedText = json.choices[0].message.content.trim();
     
-    const data = await response.json();
-    const generatedText = data.choices[0]?.message?.content?.trim();
-    
-    if (!generatedText) {
-      throw new Error('No content generated');
-    }
-    
-    // Extract title and content
+    // Extract a title and content
     const lines = generatedText.split('\n').filter(line => line.trim());
     let title = lines[0];
     let content = lines.slice(1).join('\n');
     
-    // Fallback title if needed
+    // If the first line doesn't look like a title, generate one
     if (title.length > 100 || !title.trim()) {
       title = `${industry} Industry Insight`;
       content = generatedText;
     }
     
-    // Clean up title
+    // Clean up title if it has markdown-style headers
     title = title.replace(/^#+\s+/, '').replace(/^\*\*|\*\*$/g, '');
-    
+
     return {
       title,
       content,
       snippet: generatedText.substring(0, 300) + (generatedText.length > 300 ? '...' : '')
     };
   } catch (error) {
-    errorLogger('Content generation error', error);
+    console.error("Error generating content:", error);
     throw error;
   }
 }
 
-// Send email function
-async function sendEmail(to: string, subject: string, htmlContent: string) {
-  try {
-    logger(`Sending email to ${to}`);
-
-    const emailResponse = await resend.emails.send({
-      from: 'Writer Expert <shaun@writer.expert>',
-      to: [to],
-      subject: subject,
-      html: htmlContent,
-      reply_to: "shaun@writer.expert"
-    });
-    
-    if (!emailResponse || emailResponse.error) {
-      throw new Error(`Resend error: ${emailResponse?.error?.message || 'Unknown error'}`);
-    }
-    
-    logger(`Email sent successfully to ${to}`);
-    return emailResponse;
-  } catch (error) {
-    errorLogger(`Email send error for ${to}`, error);
-    throw error;
-  }
-}
-
-// Format email content
-function formatEmailContent(contentOptions: Array<{ title: string, content: string }>, template = 'bullet-points-style-x-style', tone = 'professional', industry = 'your industry') {
+// Function to format content options as a modern HTML email
+function formatContentAsHtml(contentOptions, industry, template) {
   const today = new Date();
   const formattedDate = today.toLocaleDateString('en-US', { 
     weekday: 'long', 
@@ -200,31 +88,196 @@ function formatEmailContent(contentOptions: Array<{ title: string, content: stri
     day: 'numeric' 
   });
 
-  // Basic HTML email template
   return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>${industry} Industry Update</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          background-color: #f9f9f9;
+          margin: 0;
+          padding: 0;
+        }
+        .email-container {
+          max-width: 600px;
+          margin: 0 auto;
+          background-color: #ffffff;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        }
+        .header {
+          background-color: #2c3e50;
+          color: #ffffff;
+          padding: 20px;
+          text-align: center;
+        }
+        .date {
+          color: #ecf0f1;
+          font-size: 14px;
+          margin-top: 5px;
+        }
+        .content {
+          padding: 25px;
+        }
+        .option {
+          margin-bottom: 30px;
+          border-bottom: 1px solid #eee;
+          padding-bottom: 25px;
+        }
+        .option:last-child {
+          border-bottom: none;
+          margin-bottom: 0;
+        }
+        h1 {
+          color: #ffffff;
+          font-size: 24px;
+          margin: 0;
+          font-weight: 600;
+        }
+        h2 {
+          color: #2c3e50;
+          font-size: 20px;
+          margin-top: 0;
+          margin-bottom: 15px;
+          font-weight: 600;
+        }
+        .option-label {
+          display: inline-block;
+          background-color: #3498db;
+          color: white;
+          padding: 3px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          margin-bottom: 10px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        p {
+          margin: 0 0 15px;
+          font-size: 16px;
+        }
+        .footer {
+          background-color: #f5f5f5;
+          padding: 20px;
+          text-align: center;
+          font-size: 12px;
+          color: #7f8c8d;
+          border-top: 1px solid #eee;
+        }
+        .footer p {
+          margin: 5px 0;
+          font-size: 12px;
+        }
+        .cta-button {
+          display: inline-block;
+          background-color: #2980b9;
+          color: white;
+          text-decoration: none;
+          padding: 10px 20px;
+          border-radius: 4px;
+          font-weight: 500;
+          margin-top: 10px;
+          margin-bottom: 5px;
+        }
+        .cta-button:hover {
+          background-color: #3498db;
+        }
+        @media only screen and (max-width: 600px) {
+          .email-container {
+            width: 100%;
+            border-radius: 0;
+          }
+          .content {
+            padding: 15px;
+          }
+        }
+      </style>
     </head>
     <body>
-      <h1>${industry} Industry Update - ${formattedDate}</h1>
-      
-      ${contentOptions.map((content, index) => `
-        <div>
-          <h2>Option ${index + 1}: ${content.title}</h2>
-          <p>${content.content}</p>
+      <div class="email-container">
+        <div class="header">
+          <h1>${industry} Industry Update</h1>
+          <div class="date">${formattedDate}</div>
         </div>
-      `).join('')}
-      
-      <p>Generated with a ${tone} tone</p>
+        
+        <div class="content">
+          <p>Here are three content options for your ${industry} business. Select the one that resonates most with your audience:</p>
+          
+          ${contentOptions.map((content, index) => `
+            <div class="option">
+              <div class="option-label">Option ${index + 1}</div>
+              <h2>${content.title}</h2>
+              <div>${content.content.replace(/\n/g, '<br>')}</div>
+              
+              <a href="#" class="cta-button">Use This Content</a>
+            </div>
+          `).join('')}
+          
+          <p>These insights are generated based on current industry trends and tailored to your preferences.</p>
+        </div>
+        
+        <div class="footer">
+          <p>You're receiving this because you subscribed to ${industry} industry updates.</p>
+          <p>© ${new Date().getFullYear()} Writer Expert | <a href="#">Unsubscribe</a> | <a href="#">View in Browser</a></p>
+        </div>
+      </div>
     </body>
     </html>
   `;
 }
 
-// Main serve function
+// Determine if it's time to send email for a user
+function isTimeToSendEmail(user, currentTime) {
+  // Skip if auto-generate is disabled
+  if (!user.auto_generate) return false;
+
+  // Validate delivery time and timezone
+  if (!user.delivery_time || !user.timezone) return false;
+
+  try {
+    // Parse delivery time
+    const [targetHours, targetMinutes] = user.delivery_time.split(':').map(Number);
+
+    // Get current time in user's timezone
+    const userLocalTime = new Intl.DateTimeFormat('en-US', {
+      timeZone: user.timezone,
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    }).format(currentTime);
+
+    const [localHour, localMinute] = userLocalTime.split(':').map(Number);
+
+    // Detailed logging for debugging
+    console.log(`Email timing check for ${user.email}:`, {
+      timezone: user.timezone,
+      deliveryTime: user.delivery_time,
+      currentTime: userLocalTime,
+      targetHour: targetHours,
+      targetMinute: targetMinutes,
+      localHour,
+      localMinute
+    });
+
+    // Check if current time matches delivery time within 5 minutes
+    const hourMatch = localHour === targetHours;
+    const minuteMatch = Math.abs(localMinute - targetMinutes) < 5;
+
+    return hourMatch && minuteMatch;
+  } catch (error) {
+    console.error(`Time check error for ${user.email}:`, error);
+    return false;
+  }
+}
+
+// Main serve function for scheduled emails
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -232,7 +285,10 @@ serve(async (req) => {
   }
 
   try {
-    logger('Starting scheduled email process');
+    console.log('Starting scheduled email process');
+
+    // Get current time once
+    const now = new Date();
 
     // Fetch all users with preferences
     const { data: users, error: fetchError } = await supabase
@@ -243,19 +299,19 @@ serve(async (req) => {
       throw new Error(`Failed to fetch users: ${fetchError.message}`);
     }
 
-    logger(`Fetched ${users.length} total users`);
+    console.log(`Fetched ${users.length} total users`);
 
     // Filter users ready to receive emails
-    const usersToProcess = users.filter(isTimeToSendEmail);
+    const usersToProcess = users.filter(user => isTimeToSendEmail(user, now));
 
-    logger(`${usersToProcess.length} users ready to receive emails`);
+    console.log(`${usersToProcess.length} users ready to receive emails`);
 
     // Process each user
     for (const user of usersToProcess) {
       try {
-        logger(`Processing user: ${user.email}`);
+        console.log(`Processing user: ${user.email}`);
 
-        // Generate content options
+        // Generate 3 content options
         const contentOptions = [];
         for (let i = 0; i < 3; i++) {
           const content = await generateContent(
@@ -267,22 +323,25 @@ serve(async (req) => {
         }
 
         // Format email content
-        const emailContent = formatEmailContent(
+        const htmlContent = formatContentAsHtml(
           contentOptions, 
-          user.template, 
-          user.tone_name, 
-          user.industry
+          user.industry, 
+          user.template
         );
 
         // Send email
-        await sendEmail(
-          user.email, 
-          `Your ${user.industry} Industry Update`, 
-          emailContent
-        );
+        const response = await resend.emails.send({
+          from: 'Writer Expert <shaun@writer.expert>',
+          to: [user.email],
+          subject: `Your ${user.industry} Content Update - 3 Content Options`,
+          html: htmlContent,
+          reply_to: "shaun@writer.expert"
+        });
+
+        console.log(`Email sent successfully to ${user.email}:`, response);
 
         // Record sent email in history
-        await supabase
+        const { error: historyError } = await supabase
           .from('content_history')
           .insert({
             email: user.email,
@@ -292,9 +351,11 @@ serve(async (req) => {
             tone_name: user.tone_name
           });
 
-        logger(`Successfully processed ${user.email}`);
+        if (historyError) {
+          console.error(`Error recording email history for ${user.email}:`, historyError);
+        }
       } catch (userError) {
-        errorLogger(`Error processing user ${user.email}`, userError);
+        console.error(`Error processing user ${user.email}:`, userError);
       }
     }
 
@@ -312,7 +373,7 @@ serve(async (req) => {
       }
     );
   } catch (globalError) {
-    errorLogger('Global error in email scheduling', globalError);
+    console.error('Global error in scheduled emails:', globalError);
 
     return new Response(
       JSON.stringify({ 
