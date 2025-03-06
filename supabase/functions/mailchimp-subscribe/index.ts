@@ -45,51 +45,50 @@ serve(async (req) => {
     if (sendNow) {
       console.log('Sending email immediately to:', recipientEmail);
       
+      // Send the email with the verified sender email
+      const emailResponse = await sendEmail(recipientEmail, industry, template, content);
+      console.log('Email sent response:', emailResponse);
+      
+      // Try also sending to a test email for verification
       try {
-        // Ensure all async operations complete using Promise.all
-        const [emailResponse, testEmailResponse, dbResponse] = await Promise.all([
-          // Send main email
-          sendEmail(recipientEmail, industry, template, content),
-          
-          // Send test email if needed
-          recipientEmail !== "zaydadams07@gmail.com" ? 
-            sendEmail("zaydadams07@gmail.com", industry, template, content) : 
-            Promise.resolve(null),
-          
-          // Save to Supabase
-          createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-            .from('content_history')
-            .insert({
-              email: recipientEmail,
-              industry: industry,
-              template: template,
-              content: content,
-              sent_at: new Date().toISOString(),
-            })
-        ]);
-
-        console.log('All operations completed successfully:', {
-          mainEmail: emailResponse,
-          testEmail: testEmailResponse,
-          dbInsert: dbResponse
-        });
-
-        return new Response(JSON.stringify({ 
-          success: true, 
-          email: emailResponse,
-          message: `Email sent successfully to ${recipientEmail}`,
-          emailContent: content.substring(0, 300) + "..."
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        });
-      } catch (error) {
-        console.error('Error in send operations:', error);
-        throw error;
+        if (recipientEmail !== "zaydadams07@gmail.com") {
+          console.log('Also sending test email to: zaydadams07@gmail.com');
+          await sendEmail("zaydadams07@gmail.com", industry, template, content);
+        }
+      } catch (testEmailError) {
+        console.error('Error sending test email:', testEmailError);
       }
+      
+      // Save to Supabase for record-keeping
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      try {
+        const { error } = await supabase.from('content_history').insert({
+          email: recipientEmail,
+          industry: industry,
+          template: template,
+          content: content,
+          sent_at: new Date().toISOString(),
+        });
+        
+        if (error) {
+          console.error('Error saving to content_history:', error);
+        }
+      } catch (dbError) {
+        console.error('Database error:', dbError);
+      }
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        email: emailResponse,
+        message: `Email sent successfully to ${recipientEmail}`,
+        emailContent: content.substring(0, 300) + "..." // Return a preview of content for verification
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
     }
 
-    // If it's not a sendNow request, just return success
+    // If it's not a sendNow request, just return success (preferences were saved in the UI code)
     return new Response(JSON.stringify({ 
       success: true, 
       message: "Successfully saved preferences"
