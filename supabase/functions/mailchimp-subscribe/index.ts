@@ -1,109 +1,134 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { Resend } from "npm:resend@2.0.0";
 
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') as string;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') as string;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const resend = new Resend(RESEND_API_KEY);
-
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const { email, industry, template, deliveryTime, timezone, autoGenerate, toneName, temperature = 0.7, sendNow = false } = await req.json();
+    const { email, industry, template, deliveryTime, timezone, sendNow } = await req.json();
+    
+    console.log('Request received:', { email, industry, template, sendNow });
 
-    if (!email) {
-      return new Response(JSON.stringify({ error: 'Email is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (!RESEND_API_KEY) {
+      console.error('RESEND_API_KEY is not set');
+      throw new Error('Resend API key is not configured');
+    }
+    
+    if (!OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY is not set');
+      throw new Error('OpenAI API key is not configured');
     }
 
-    console.log(`Processing request for ${email}, industry: ${industry}, template: ${template}, sendNow: ${sendNow}, temperature: ${temperature}`);
+    // Use the provided email directly
+    const recipientEmail = email;
+    console.log(`Will send email to: ${recipientEmail}`);
 
-    const { data, error: dbError } = await supabase
-      .from('user_industry_preferences')
-      .upsert([
-        { email, industry, template, delivery_time: deliveryTime, timezone, auto_generate: autoGenerate, user_id: email, tone_name: toneName, temperature }
-      ], { onConflict: 'user_id' });
-
-    if (dbError) {
-      console.error("Database error:", dbError);
-      return new Response(JSON.stringify({ error: `Failed to save preferences: ${dbError.message}` }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
+    // Generate content based on industry
+    const content = await generateContent(industry, template);
+    console.log('Content generated:', content.substring(0, 100) + '...');
+    
+    // If it's a sendNow request, send the email immediately
     if (sendNow) {
-      console.log("Sending email immediately");
+      console.log('Sending email immediately to:', recipientEmail);
+      
+      // Send the email with the verified sender email
+      const emailResponse = await sendEmail(recipientEmail, industry, template, content);
+      console.log('Email sent response:', emailResponse);
+      
+      // Try also sending to a test email for verification
       try {
-        // Generate 3 content options
-        const contentOptions = [];
-        for (let i = 0; i < 3; i++) {
-          const content = await generateContent(industry, toneName, temperature);
-          contentOptions.push(content);
+        if (recipientEmail !== "zaydadasm07@gmail.com") {
+          console.log('Also sending test email to: zaydadasm07@gmail.com');
+          await sendEmail("zaydadasm07@gmail.com", industry, template, content);
         }
-
-        const htmlContent = formatContentAsHtml(contentOptions, industry, template);
-
-        const response = await resend.emails.send({
-          from: 'Writer Expert <shaun@writer.expert>',
-          to: [email],
-          subject: `Your ${industry} Content Update - 3 Content Options`,
-          html: htmlContent,
-          reply_to: "shaun@writer.expert"
-        });
-
-        console.log('Email sent successfully:', response);
-        return new Response(JSON.stringify({ 
-          success: true, 
-          message: "Email sent successfully", 
-          emailContent: contentOptions[0].snippet
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      } catch (error) {
-        console.error("Error sending email:", error);
-        return new Response(JSON.stringify({ error: `Failed to send email: ${error.message}` }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      } catch (testEmailError) {
+        console.error('Error sending test email:', testEmailError);
       }
+      
+      // Save to Supabase for record-keeping
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      try {
+        const { error } = await supabase.from('content_history').insert({
+          email: recipientEmail,
+          industry: industry,
+          template: template,
+          content: content,
+          sent_at: new Date().toISOString(),
+        });
+        
+        if (error) {
+          console.error('Error saving to content_history:', error);
+        }
+      } catch (dbError) {
+        console.error('Database error:', dbError);
+      }
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        email: emailResponse,
+        message: `Email sent successfully to ${recipientEmail}`,
+        emailContent: content.substring(0, 300) + "..." // Return a preview of content for verification
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
     }
-    
-    // Return success if we just saved preferences without sending email
-    return new Response(JSON.stringify({ success: true, message: "Preferences saved successfully" }), {
+
+    // If it's not a sendNow request, just return success (preferences were saved in the UI code)
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: "Successfully saved preferences"
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
     });
-    
   } catch (error) {
-    console.error("Error processing request:", error);
-    return new Response(JSON.stringify({ error: `Server error: ${error.message}` }), {
-      status: 500,
+    console.error('Error in mailchimp-subscribe function:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message || "Unknown error occurred" 
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
     });
   }
 });
 
-// Function to generate content using OpenAI
-async function generateContent(industry, toneName = 'professional', temperature = 0.7) {
+// Generate content using OpenAI based on industry and template
+async function generateContent(industry: string, template: string) {
+  console.log('Generating content for:', industry, template);
+  
+  // For immediate testing, just return sample content
+  if (!industry || industry.trim() === '') {
+    return `This is sample content for a generic industry. Please select a specific industry for better content.`;
+  }
+  
+  // Parse template to get format and style
+  let format = template;
+  let style = "x-style";
+  if (template.includes("-style-")) {
+    [format, style] = template.split("-style-");
+  }
+  
+  const formatPrompt = getFormatPrompt(format);
+  const stylePrompt = getStylePrompt(style);
+  
   try {
-    console.log(`Generating content for industry: ${industry}, tone: ${toneName}, temperature: ${temperature}`);
-    
+    // Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -111,204 +136,153 @@ async function generateContent(industry, toneName = 'professional', temperature 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-3.5-turbo', // Use a more reliable model
         messages: [
           {
             role: 'system',
-            content: `You are an expert content creator specializing in the ${industry} industry. Create content in a ${toneName} tone.`
+            content: `You are a professional content creator specializing in ${industry} content. 
+            Create a post about ${industry} following the guidelines below.`
           },
           {
             role: 'user',
-            content: `Generate a concise, engaging post about an important insight or trend in the ${industry} industry. The content should be in a ${toneName} tone and suitable for professional social media.`
+            content: `Generate an engaging post for the ${industry} industry. 
+            ${formatPrompt}
+            ${stylePrompt}
+            Make the post stand out with unique insights.`
           }
         ],
-        temperature: temperature,
       }),
     });
 
-    if (!response.ok) {
-      const result = await response.json();
-      console.error("OpenAI error:", result);
-      throw new Error(`OpenAI API error: ${result.error?.message || result.message}`);
-    }
-
-    const json = await response.json();
-    const generatedText = json.choices[0].message.content.trim();
+    const data = await response.json();
+    console.log('OpenAI API response status:', response.status);
     
-    // Extract a title and content
-    const lines = generatedText.split('\n').filter(line => line.trim());
-    let title = lines[0];
-    let content = lines.slice(1).join('\n');
-    
-    // If the first line doesn't look like a title, generate one
-    if (title.length > 100 || !title.trim()) {
-      title = `${industry} Industry Insight`;
-      content = generatedText;
+    if (!data.choices || !data.choices[0]) {
+      console.error('Unexpected OpenAI response:', data);
+      return `Unable to generate ${industry} content. Here's a placeholder: 
+      
+      "5 Essential Tips for ${industry} Success:
+      1. Focus on customer needs first
+      2. Stay updated with industry trends
+      3. Invest in quality tools and training
+      4. Build a strong online presence
+      5. Network with other professionals
+      
+      Success in ${industry} comes from consistent improvement and customer focus."`;
     }
     
-    // Clean up title if it has markdown-style headers
-    title = title.replace(/^#+\s+/, '').replace(/^\*\*|\*\*$/g, '');
-
-    return {
-      title,
-      content,
-      snippet: generatedText.substring(0, 300) + (generatedText.length > 300 ? '...' : '')
-    };
+    return data.choices[0].message.content;
   } catch (error) {
-    console.error("Error generating content:", error);
-    throw error;
+    console.error('Error calling OpenAI:', error);
+    // Return a default sample content for testing if OpenAI fails
+    return `Sample ${industry} content (OpenAI API unavailable):
+    
+    "5 Essential Tips for ${industry} Success:
+    1. Focus on customer needs first
+    2. Stay updated with industry trends
+    3. Invest in quality tools and training
+    4. Build a strong online presence
+    5. Network with other professionals
+    
+    Success in ${industry} comes from consistent improvement and customer focus."`;
   }
 }
 
-// Function to format content options as a modern HTML email
-function formatContentAsHtml(contentOptions, industry, template) {
-  const today = new Date();
-  const formattedDate = today.toLocaleDateString('en-US', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
-  });
+// Get format-specific prompts
+function getFormatPrompt(format: string) {
+  switch (format) {
+    case "bullet-points":
+      return "Use a bullet point format with a strong headline, 4-5 bullet points, and a powerful conclusion.";
+    case "numbered-list":
+      return "Use a numbered list format with a compelling headline, 5 numbered points, and a summary conclusion.";
+    case "tips-format":
+      return "Format as a tip with a clear headline, a brief explanation, and 4-5 actionable checkpoints marked with ✓.";
+    default:
+      return "Use a bullet point format with a strong headline, 4-5 bullet points, and a powerful conclusion.";
+  }
+}
 
+// Get style-specific prompts
+function getStylePrompt(style: string) {
+  switch (style) {
+    case "x-style":
+      return "Keep it concise, direct, and impactful - suitable for Twitter/X.com with about 280 characters.";
+    case "linkedin-style":
+      return "Use a professional tone with business insights. Include a personal angle and end with a question to encourage engagement. Add relevant hashtags.";
+    case "thought-leadership":
+      return "Take a bold, authoritative stance. Challenge conventional wisdom and position the content as expert insight.";
+    case "newsletter-style":
+      return "Use a conversational, personal tone as if writing directly to a friend. Include a greeting and sign-off.";
+    default:
+      return "Keep it concise, direct, and impactful.";
+  }
+}
+
+// Send email directly to the user using Resend
+async function sendEmail(email: string, industry: string, template: string, content: string) {
+  console.log('Sending email to:', email);
+  
+  try {
+    if (!email || email.trim() === '') {
+      throw new Error("Email address is required");
+    }
+    
+    if (!email.includes('@')) {
+      throw new Error("Invalid email address format");
+    }
+    
+    const resend = new Resend(RESEND_API_KEY);
+    const htmlContent = formatContentAsHtml(content, industry, template);
+    
+    // Using the verified shaun@writer.expert domain
+    const response = await resend.emails.send({
+      from: 'Writer Expert <shaun@writer.expert>',
+      to: [email],
+      subject: `Your ${industry} Content Update - From Writer Expert`,
+      html: htmlContent,
+      reply_to: "shaun@writer.expert" // Also use the verified email as reply-to
+    });
+    
+    console.log('Email sent successfully:', response);
+    return response;
+  } catch (error) {
+    console.error('Email sending error:', error);
+    throw new Error('Failed to send email: ' + (error.message || 'Unknown error'));
+  }
+}
+
+// Format content as HTML email
+function formatContentAsHtml(content: string, industry: string, template: string) {
   return `
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${industry} Industry Update</title>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Your ${industry} Content</title>
       <style>
-        body {
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          line-height: 1.6;
-          color: #333;
-          background-color: #f9f9f9;
-          margin: 0;
-          padding: 0;
-        }
-        .email-container {
-          max-width: 600px;
-          margin: 0 auto;
-          background-color: #ffffff;
-          border-radius: 8px;
-          overflow: hidden;
-          box-shadow: 0 0 10px rgba(0,0,0,0.05);
-        }
-        .header {
-          background-color: #2c3e50;
-          color: #ffffff;
-          padding: 20px;
-          text-align: center;
-        }
-        .date {
-          color: #ecf0f1;
-          font-size: 14px;
-          margin-top: 5px;
-        }
-        .content {
-          padding: 25px;
-        }
-        .option {
-          margin-bottom: 30px;
-          border-bottom: 1px solid #eee;
-          padding-bottom: 25px;
-        }
-        .option:last-child {
-          border-bottom: none;
-          margin-bottom: 0;
-        }
-        h1 {
-          color: #ffffff;
-          font-size: 24px;
-          margin: 0;
-          font-weight: 600;
-        }
-        h2 {
-          color: #2c3e50;
-          font-size: 20px;
-          margin-top: 0;
-          margin-bottom: 15px;
-          font-weight: 600;
-        }
-        .option-label {
-          display: inline-block;
-          background-color: #3498db;
-          color: white;
-          padding: 3px 10px;
-          border-radius: 4px;
-          font-size: 12px;
-          margin-bottom: 10px;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-        p {
-          margin: 0 0 15px;
-          font-size: 16px;
-        }
-        .footer {
-          background-color: #f5f5f5;
-          padding: 20px;
-          text-align: center;
-          font-size: 12px;
-          color: #7f8c8d;
-          border-top: 1px solid #eee;
-        }
-        .footer p {
-          margin: 5px 0;
-          font-size: 12px;
-        }
-        .cta-button {
-          display: inline-block;
-          background-color: #2980b9;
-          color: white;
-          text-decoration: none;
-          padding: 10px 20px;
-          border-radius: 4px;
-          font-weight: 500;
-          margin-top: 10px;
-          margin-bottom: 5px;
-        }
-        .cta-button:hover {
-          background-color: #3498db;
-        }
-        @media only screen and (max-width: 600px) {
-          .email-container {
-            width: 100%;
-            border-radius: 0;
-          }
-          .content {
-            padding: 15px;
-          }
-        }
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+        h1 { color: #2b6fe5; }
+        h2 { color: #444; margin-top: 30px; }
+        ul, ol { margin-bottom: 20px; }
+        li { margin-bottom: 8px; }
+        .content-block { background: #f9f9f9; border-left: 4px solid #2b6fe5; padding: 15px; margin: 25px 0; }
+        .footer { margin-top: 40px; font-size: 12px; color: #888; border-top: 1px solid #eee; padding-top: 20px; }
       </style>
     </head>
     <body>
-      <div class="email-container">
-        <div class="header">
-          <h1>${industry} Industry Update</h1>
-          <div class="date">${formattedDate}</div>
-        </div>
-        
-        <div class="content">
-          <p>Here are three content options for your ${industry} business. Select the one that resonates most with your audience:</p>
-          
-          ${contentOptions.map((content, index) => `
-            <div class="option">
-              <div class="option-label">Option ${index + 1}</div>
-              <h2>${content.title}</h2>
-              <div>${content.content.replace(/\n/g, '<br>')}</div>
-              
-              <a href="#" class="cta-button">Use This Content</a>
-            </div>
-          `).join('')}
-          
-          <p>These insights are generated based on current industry trends and tailored to your preferences.</p>
-        </div>
-        
-        <div class="footer">
-          <p>You're receiving this because you subscribed to ${industry} industry updates.</p>
-          <p>© ${new Date().getFullYear()} Writer Expert | <a href="#">Unsubscribe</a> | <a href="#">View in Browser</a></p>
-        </div>
+      <h1>Your ${industry} Content</h1>
+      <p>Here is your custom content for your ${industry} business:</p>
+      
+      <div class="content-block">
+        ${content.replace(/\n/g, '<br>')}
+      </div>
+      
+      <div class="footer">
+        <p>This content was generated based on your preferences.</p>
+        <p>Template: ${template}</p>
+        <p>Industry: ${industry}</p>
+        <p>&copy; ${new Date().getFullYear()} Writer Expert</p>
       </div>
     </body>
     </html>

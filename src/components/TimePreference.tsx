@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
-import { AlertCircle, Clock } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 interface TimePreferenceProps {
   deliveryTime: string;
@@ -20,7 +20,6 @@ export function TimePreference({
 }: TimePreferenceProps) {
   const [timezones, setTimezones] = useState<string[]>([]);
   const [currentTime, setCurrentTime] = useState<string>("");
-  const [nextDeliveryTime, setNextDeliveryTime] = useState<string>("");
 
   useEffect(() => {
     // Get a list of timezones
@@ -42,8 +41,7 @@ export function TimePreference({
       "Asia/Shanghai",
       "Asia/Singapore",
       "Australia/Sydney",
-      "Pacific/Auckland",
-      "Africa/Johannesburg"
+      "Pacific/Auckland"
     ];
     
     // Add the user's local timezone if it's not already in the list
@@ -56,16 +54,12 @@ export function TimePreference({
 
     // Update current time in selected timezone
     updateCurrentTime();
-    updateNextDeliveryTime();
 
     // Set up interval to update the current time every minute
-    const intervalId = setInterval(() => {
-      updateCurrentTime();
-      updateNextDeliveryTime();
-    }, 60000);
+    const intervalId = setInterval(updateCurrentTime, 60000);
     
     return () => clearInterval(intervalId);
-  }, [timezone, deliveryTime]);
+  }, [timezone]);
 
   const updateCurrentTime = () => {
     try {
@@ -81,44 +75,6 @@ export function TimePreference({
     } catch (error) {
       console.error("Error formatting time:", error);
       setCurrentTime("--:--");
-    }
-  };
-
-  const updateNextDeliveryTime = () => {
-    try {
-      if (!deliveryTime) return;
-
-      const [hours, minutes] = deliveryTime.split(':').map(Number);
-      const now = new Date();
-      
-      // Get current date in user's timezone
-      const userNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-      
-      // Set delivery time for today
-      const deliveryDate = new Date(userNow);
-      deliveryDate.setHours(hours, minutes, 0, 0);
-      
-      // If the time has already passed today, schedule for tomorrow
-      if (deliveryDate < userNow) {
-        deliveryDate.setDate(deliveryDate.getDate() + 1);
-      }
-      
-      // Format the date for display
-      const dateOptions: Intl.DateTimeFormatOptions = {
-        timeZone: timezone,
-        weekday: 'long',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      };
-      
-      const formatted = new Intl.DateTimeFormat('en-US', dateOptions).format(deliveryDate);
-      setNextDeliveryTime(formatted);
-    } catch (error) {
-      console.error("Error calculating next delivery:", error);
-      setNextDeliveryTime("");
     }
   };
 
@@ -154,12 +110,6 @@ export function TimePreference({
           <span>Current time in your selected timezone: </span>
           <span className="font-medium">{currentTime}</span>
         </div>
-        {nextDeliveryTime && (
-          <div className="flex items-center mt-2 text-sm text-blue-600">
-            <Clock className="h-4 w-4 mr-1" />
-            <span>Next scheduled delivery: <strong>{nextDeliveryTime}</strong></span>
-          </div>
-        )}
         <p className="text-sm text-gray-500 mt-1">
           Choose what time you'd like to receive your daily content.
         </p>
@@ -189,11 +139,8 @@ export function TimePreference({
         <div className="text-sm text-amber-800">
           <p className="font-medium">Important Note About Scheduled Delivery</p>
           <p className="mt-1">
-            After saving your preferences, emails will be sent daily at your selected time. 
-            Make sure the auto-generate toggle is enabled for scheduled delivery to work.
-          </p>
-          <p className="mt-1">
-            The system checks every few minutes for emails that need to be sent based on your delivery time and timezone.
+            After saving your preferences, you'll receive content at your selected time every day. 
+            Make sure the auto-generate toggle is enabled for scheduled delivery.
           </p>
         </div>
       </div>
