@@ -85,7 +85,7 @@ function isTimeToSendEmail(user) {
   }
 }
 
-// Function to generate content (same as previous implementation)
+// Function to generate content
 async function generateContent(industry, toneName = 'professional', temperature = 0.7) {
   try {
     detailedLog(`Generating content for industry: ${industry}, tone: ${toneName}`);
@@ -191,7 +191,7 @@ serve(async (req) => {
           contentOptions.push(content);
         }
 
-        // Format email content (using previous implementation)
+        // Format email content
         const htmlContent = formatContentAsHtml(
           contentOptions, 
           user.industry, 
@@ -209,19 +209,29 @@ serve(async (req) => {
 
         detailedLog(`Email sent successfully to ${user.email}`, response);
 
-        // Record sent email in history
-        const { error: historyError } = await supabase
+        // Prepare content history payload
+        const contentHistoryPayload = {
+          email: user.email,
+          user_id: user.user_id, // Assuming user_id is already in the user_industry_preferences table
+          industry: user.industry,
+          template: user.template,
+          content: contentOptions[0].content,
+          sent_at: new Date().toISOString(),
+          tone_name: user.tone_name
+        };
+
+        // Insert content history
+        const { error: historyError, data: insertedData } = await supabase
           .from('content_history')
-          .insert({
-            email: user.email,
-            industry: user.industry,
-            content: contentOptions[0].content,
-            template: user.template,
-            tone_name: user.tone_name
-          });
+          .insert(contentHistoryPayload);
 
         if (historyError) {
-          detailedLog(`Error recording email history for ${user.email}`, historyError);
+          detailedLog(`Error inserting content history for ${user.email}`, {
+            error: historyError,
+            payload: contentHistoryPayload
+          });
+        } else {
+          detailedLog(`Successfully inserted content history for ${user.email}`, insertedData);
         }
       } catch (userError) {
         detailedLog(`Error processing user ${user.email}`, userError);
@@ -259,7 +269,7 @@ serve(async (req) => {
   }
 });
 
-// Existing formatContentAsHtml function (unchanged from previous implementation)
+// Format content as HTML email
 function formatContentAsHtml(contentOptions, industry, template) {
   const today = new Date();
   const formattedDate = today.toLocaleDateString('en-US', { 
@@ -269,6 +279,23 @@ function formatContentAsHtml(contentOptions, industry, template) {
     day: 'numeric' 
   });
 
-  // [Rest of the HTML template remains the same as in previous implementation]
-  return `...`; // Full HTML template would be here
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>${industry} Industry Update</title>
+    </head>
+    <body>
+      <h1>${industry} Industry Update - ${formattedDate}</h1>
+      
+      ${contentOptions.map((content, index) => `
+        <div>
+          <h2>Option ${index + 1}: ${content.title}</h2>
+          <p>${content.content}</p>
+        </div>
+      `).join('')}
+    </body>
+    </html>
+  `;
 }
