@@ -1,8 +1,19 @@
-
-// This file implements a custom toast hook based on sonner
-
-import { toast as sonnerToast, type ToastOptions } from "sonner";
+import { toast as sonnerToast } from "sonner";
 import { useState, useEffect } from "react";
+
+// Define our own ToastOptions type based on what sonner accepts
+type ToastOptions = {
+  id?: string;
+  duration?: number;
+  promise?: Promise<any>;
+  closeButton?: boolean;
+  position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "top-center" | "bottom-center";
+  important?: boolean;
+  loading?: boolean;
+  success?: string;
+  error?: string;
+  createdAt?: number;
+};
 
 type ToastProps = ToastOptions & {
   id: string;
