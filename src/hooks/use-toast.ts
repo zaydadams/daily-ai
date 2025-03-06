@@ -3,6 +3,7 @@ import { toast as sonnerToast } from "sonner";
 import { useState, useEffect } from "react";
 
 // Define our own ToastOptions type based on what sonner accepts
+// instead of trying to import it directly
 type ToastOptions = {
   id?: string;
   duration?: number;
