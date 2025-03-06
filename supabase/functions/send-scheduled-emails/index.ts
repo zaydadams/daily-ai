@@ -116,16 +116,11 @@ serve(async (req) => {
         if (!forceSendToday) {
           const today = format(new Date(), 'yyyy-MM-dd');
           
-      // Save to Supabase for record-keeping
-      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      try {
-        const { error } = await supabase.from('content_history').insert({
-          email: recipientEmail,
-          industry: industry,
-          template: template,
-          content: content,
-          sent_at: new Date().toISOString(),
-        });
+          const { data: existingEmails, error: emailCheckError } = await supabase
+            .from('content_history')
+            .select('*')
+            .eq('email', user.email)
+            .gte('sent_at', today);
             
           if (emailCheckError) {
             console.error(`Error checking sent emails for ${user.email}:`, emailCheckError);
@@ -487,7 +482,7 @@ async function sendEmail(to: string, subject: string, htmlContent: string) {
     
     // Use Resend to send email with the correct from address
     const emailResponse = await resend.emails.send({
-      from: 'Writer Expert <shaun@writer.expert>',
+      from: fromEmail,
       to: [to],
       subject: subject,
       html: htmlContent,
