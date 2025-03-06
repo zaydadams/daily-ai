@@ -3,40 +3,70 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { format } from "https://deno.land/std@0.168.0/datetime/mod.ts";
 import { Resend } from "npm:resend@2.0.0";
 
-// Enhanced global error handling
-globalThis.addEventListener('unhandledrejection', (event) => {
-  console.error('Unhandled Promise Rejection:', event.reason);
-});
-
-// Aggressive logging function
-function safeLog(...args: any[]) {
+// Ultra-verbose logging function
+function ultraLog(...args: any[]) {
   try {
-    console.log(...args);
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}]`, ...args);
   } catch (error) {
     console.error('Logging error:', error);
   }
 }
 
-// Verify critical environment variables
-const supabaseUrl = Deno.env.get('SUPABASE_URL');
-const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY');
-const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-const resendApiKey = Deno.env.get('RESEND_API_KEY');
-const fromEmail = 'Writer Expert <shaun@writer.expert>';
-
-// Comprehensive environment variable logging
-safeLog('Environment Variable Checks:');
-safeLog('SUPABASE_URL:', supabaseUrl ? 'Present' : 'MISSING');
-safeLog('SUPABASE_ANON_KEY:', supabaseKey ? 'Present (hidden)' : 'MISSING');
-safeLog('OPENAI_API_KEY:', openaiApiKey ? 'Present (hidden)' : 'MISSING');
-safeLog('RESEND_API_KEY:', resendApiKey ? 'Present (hidden)' : 'MISSING');
-
-// Throw error if any critical variables are missing
-if (!supabaseUrl || !supabaseKey || !openaiApiKey || !resendApiKey) {
-  throw new Error('Missing critical environment variables');
+// Extensive error logging
+function logError(context: string, error: any) {
+  ultraLog(`ERROR in ${context}:`, {
+    message: error.message,
+    name: error.name,
+    stack: error.stack,
+    toString: error.toString()
+  });
 }
 
-// Initialize clients
+// Verify and log environment variables
+function validateEnvironmentVariables() {
+  const variables = [
+    'SUPABASE_URL',
+    'SUPABASE_ANON_KEY',
+    'OPENAI_API_KEY',
+    'RESEND_API_KEY'
+  ];
+
+  ultraLog('Environment Variable Validation:');
+  variables.forEach(varName => {
+    const value = Deno.env.get(varName);
+    ultraLog(`  ${varName}: ${value ? 'PRESENT (hidden)' : 'MISSING'}`);
+  });
+
+  // Throw if any critical variables are missing
+  variables.forEach(varName => {
+    if (!Deno.env.get(varName)) {
+      throw new Error(`Missing critical environment variable: ${varName}`);
+    }
+  });
+}
+
+// Initialize global error handling
+globalThis.addEventListener('unhandledrejection', (event) => {
+  ultraLog('Unhandled Promise Rejection:', event.reason);
+});
+
+// Validate environment variables immediately
+try {
+  validateEnvironmentVariables();
+} catch (initError) {
+  ultraLog('CRITICAL INITIALIZATION ERROR:', initError);
+  throw initError;
+}
+
+// Initialize clients with extensive logging
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
+const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
+const fromEmail = 'Writer Expert <shaun@writer.expert>';
+
+ultraLog('Initializing Supabase and Resend clients');
 const supabase = createClient(supabaseUrl, supabaseKey);
 const resend = new Resend(resendApiKey);
 
@@ -45,42 +75,43 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Primary serve function with maximum error capture
 serve(async (req) => {
-  // Add a global try-catch for maximum error capture
   try {
-    safeLog("Starting send-scheduled-emails function");
-    safeLog("Request method:", req.method);
-    
+    ultraLog('Request received:', {
+      method: req.method,
+      url: req.url,
+      headers: Object.fromEntries(req.headers)
+    });
+
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
+      ultraLog('Handling CORS preflight request');
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Parse request body with extensive error handling
+    // Parse request body with comprehensive error handling
     let requestBody = { users: null, forceSendToday: false };
     try {
       requestBody = await req.json().catch(() => ({ users: null, forceSendToday: false }));
-      safeLog("Request body:", JSON.stringify(requestBody, null, 2));
+      ultraLog('Parsed request body:', JSON.stringify(requestBody, null, 2));
     } catch (bodyParseError) {
-      safeLog("Error parsing request body:", bodyParseError);
+      logError('Request Body Parsing', bodyParseError);
+      // Continue with default body if parsing fails
     }
-    
+
     const { users, forceSendToday } = requestBody;
-    
-    let usersToProcess = [];
     const now = new Date();
-    
+
     // Fetch users to process
+    let usersToProcess = [];
     try {
       if (users && Array.isArray(users) && users.length > 0 && forceSendToday) {
-        // If specific users are provided AND forceSendToday is true, use them
-        safeLog(`Processing specific users with forceSendToday: ${users.length}`);
+        ultraLog(`Processing specific users with forceSendToday: ${users.length}`);
         usersToProcess = users;
       } else {
-        // Fetch users who should receive emails now based on their delivery time
-        safeLog("Fetching users who should receive emails now based on delivery time");
+        ultraLog("Fetching users who should receive emails now");
         
-        // Get all users with preferences
         const { data: allUsers, error: fetchError } = await supabase
           .from('user_industry_preferences')
           .select('*');
@@ -89,41 +120,33 @@ serve(async (req) => {
           throw new Error(`Failed to fetch users: ${fetchError.message}`);
         }
         
-        safeLog(`Found ${allUsers.length} total users with preferences`);
+        ultraLog(`Found ${allUsers.length} total users with preferences`);
         
-        // User filtering logic with maximum logging
+        // User filtering with extensive logging
         usersToProcess = allUsers.filter(user => {
           try {
-            safeLog(`Detailed user check: ${JSON.stringify(user, null, 2)}`);
-            
+            ultraLog(`Checking user: ${user.email}`, {
+              deliveryTime: user.delivery_time,
+              timezone: user.timezone,
+              autoGenerate: user.auto_generate
+            });
+
             // Skip users with auto-generate disabled
             if (!user.auto_generate) {
-              safeLog(`Skipping user ${user.email} - auto-generate is disabled`);
+              ultraLog(`Skipping user ${user.email} - auto-generate is disabled`);
               return false;
             }
 
             // Validate delivery time and timezone
             if (!user.delivery_time || !user.timezone) {
-              safeLog(`Skipping user ${user.email} - missing delivery time or timezone`);
+              ultraLog(`Skipping user ${user.email} - missing delivery time or timezone`);
               return false;
             }
 
-            // Validate delivery time format
-            if (!/^\d{1,2}:\d{2}$/.test(user.delivery_time)) {
-              safeLog(`Invalid delivery time format for ${user.email}: ${user.delivery_time}`);
-              return false;
-            }
-
-            // Parse time
+            // Parse delivery time
             const [hours, minutes] = user.delivery_time.split(':').map(Number);
             
-            // Validate hours and minutes
-            if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-              safeLog(`Invalid time values for ${user.email}: ${hours}:${minutes}`);
-              return false;
-            }
-
-            // Timezone conversion
+            // Get local time in user's timezone
             const userLocalTime = new Intl.DateTimeFormat('en-US', {
               timeZone: user.timezone,
               hour: 'numeric',
@@ -133,36 +156,43 @@ serve(async (req) => {
 
             const [localHour, localMinute] = userLocalTime.split(':').map(Number);
 
-            safeLog(`Timezone check for ${user.email}:
-              - Current time in ${user.timezone}: ${userLocalTime}
-              - Delivery time: ${user.delivery_time}
-              - Parsed local time: ${localHour}:${localMinute}`);
+            ultraLog(`Timezone check for ${user.email}:`, {
+              currentTimeInTimezone: userLocalTime,
+              deliveryTime: user.delivery_time,
+              localHour,
+              localMinute,
+              targetHour: hours,
+              targetMinute: minutes
+            });
 
             // Check if current time matches delivery time within 5 minutes
             const hourMatch = localHour === hours;
             const minuteMatch = Math.abs(localMinute - minutes) < 5;
 
             const shouldProcess = hourMatch && minuteMatch;
-            safeLog(`User ${user.email} processing decision: ${shouldProcess}`);
+            ultraLog(`User ${user.email} processing decision: ${shouldProcess}`);
 
             return shouldProcess;
           } catch (userProcessError) {
-            safeLog(`Error processing user ${user.email}:`, userProcessError);
+            logError(`User processing error for ${user.email}`, userProcessError);
             return false;
           }
         });
         
-        safeLog(`Found ${usersToProcess.length} users to process based on delivery time`);
+        ultraLog(`Found ${usersToProcess.length} users to process`);
       }
     } catch (fetchProcessingError) {
-      safeLog("Critical error in user fetching and processing:", fetchProcessingError);
+      logError('User fetching and processing', fetchProcessingError);
       throw fetchProcessingError;
     }
 
-    // Process each user with maximum error handling
+    // Process each user
     for (const user of usersToProcess) {
       try {
-        safeLog(`Processing user: ${user.email}, industry: ${user.industry}`);
+        ultraLog(`Processing user: ${user.email}`, {
+          industry: user.industry,
+          template: user.template
+        });
         
         // Content generation
         const temperature = user.temperature || 0.7;
@@ -173,14 +203,14 @@ serve(async (req) => {
             const content = await generateContent(user.industry, user.tone_name, temperature);
             contentOptions.push(content);
           } catch (generateError) {
-            safeLog(`Content generation error for user ${user.email}, attempt ${i + 1}:`, generateError);
+            logError(`Content generation error for ${user.email}`, generateError);
             // Fallback content generation
             const fallbackContent = await generateContent(user.industry, user.tone_name, 0.5);
             contentOptions.push(fallbackContent);
           }
         }
         
-        // Email sending
+        // Email content formatting
         const emailContent = formatEmailContent(
           contentOptions, 
           user.template, 
@@ -188,6 +218,7 @@ serve(async (req) => {
           user.industry
         );
         
+        // Send email
         await sendEmail(user.email, `Your ${user.industry} Industry Update`, emailContent);
         
         // Record sent email
@@ -201,9 +232,9 @@ serve(async (req) => {
             tone_name: user.tone_name
           });
         
-        safeLog(`Successfully processed user ${user.email}`);
+        ultraLog(`Successfully processed user ${user.email}`);
       } catch (userProcessError) {
-        safeLog(`Comprehensive error processing user ${user.email}:`, userProcessError);
+        logError(`Comprehensive error processing user ${user.email}`, userProcessError);
       }
     }
 
@@ -213,11 +244,15 @@ serve(async (req) => {
         success: true, 
         processed: usersToProcess.length
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
     );
-    
   } catch (globalError) {
-    safeLog("Catastrophic error in scheduled emails function:", globalError);
+    logError('Catastrophic error in scheduled emails function', globalError);
     
     // Ensure error is logged and returned
     return new Response(
@@ -237,11 +272,10 @@ serve(async (req) => {
   }
 });
 
-// Existing helper functions (generateContent, formatEmailContent, sendEmail) remain the same
-// [The implementations for these functions would be identical to the previous version]
+// Existing helper functions (content generation, email formatting, etc.)
 async function generateContent(industry: string, toneName = 'professional', temperature = 0.7) {
   try {
-    safeLog(`Generating content for industry: ${industry}, tone: ${toneName}, temperature: ${temperature}`);
+    ultraLog(`Generating content for industry: ${industry}, tone: ${toneName}, temperature: ${temperature}`);
     
     if (!industry) {
       throw new Error('Industry is required');
@@ -301,24 +335,14 @@ async function generateContent(industry: string, toneName = 'professional', temp
       snippet: generatedText.substring(0, 300) + (generatedText.length > 300 ? '...' : '')
     };
   } catch (error) {
-    safeLog("Comprehensive content generation error:", error);
+    logError("Content generation error", error);
     throw error;
   }
 }
 
 async function sendEmail(to: string, subject: string, htmlContent: string) {
   try {
-    safeLog(`Attempting to send email to ${to}`);
-    safeLog(`Resend API Key: ${resendApiKey ? 'Present' : 'MISSING'}`);
-    safeLog(`From Email: ${fromEmail}`);
-
-    // Validate API key and email addresses
-    if (!resendApiKey) {
-      throw new Error('Resend API key is missing');
-    }
-    if (!to || !fromEmail) {
-      throw new Error(`Invalid email addresses: to=${to}, from=${fromEmail}`);
-    }
+    ultraLog(`Attempting to send email to ${to}`);
 
     const emailResponse = await resend.emails.send({
       from: fromEmail,
@@ -329,16 +353,14 @@ async function sendEmail(to: string, subject: string, htmlContent: string) {
     });
     
     if (!emailResponse || emailResponse.error) {
-      safeLog('Detailed Resend error:', JSON.stringify(emailResponse?.error, null, 2));
+      logError('Resend email error', emailResponse?.error);
       throw new Error(`Resend error: ${emailResponse?.error?.message || 'Unknown error'}`);
     }
     
-    safeLog(`Email sent successfully to ${to}`);
-    safeLog('Resend response:', JSON.stringify(emailResponse, null, 2));
+    ultraLog(`Email sent successfully to ${to}`);
     return emailResponse;
   } catch (error) {
-    safeLog(`Comprehensive email send error for ${to}:`, error);
-    safeLog('Error stack:', error.stack);
+    logError(`Email send error for ${to}`, error);
     throw error;
   }
 }
