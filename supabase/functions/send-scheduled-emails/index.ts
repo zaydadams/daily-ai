@@ -30,7 +30,8 @@ function parseDeliveryTime(timeString: string) {
   return { hours, minutes };
 }
 
-// Determine if it's time to send email for a user
+// Improved function to determine if it's time to send email for a user
+// Uses a 5-minute window instead of requiring exact time match
 function isTimeToSendEmail(user) {
   try {
     // Skip if auto-generate is disabled
@@ -41,7 +42,10 @@ function isTimeToSendEmail(user) {
 
     // Validate delivery time and timezone
     if (!user.delivery_time || !user.timezone) {
-      detailedLog(`Skipping ${user.email} - missing delivery time or timezone`);
+      detailedLog(`Skipping ${user.email} - missing delivery time or timezone: ${JSON.stringify({ 
+        delivery_time: user.delivery_time, 
+        timezone: user.timezone 
+      })}`);
       return false;
     }
 
@@ -50,16 +54,27 @@ function isTimeToSendEmail(user) {
 
     // Get current time in the user's timezone
     const now = new Date();
-    const userLocalTime = new Intl.DateTimeFormat('en-US', {
-      timeZone: user.timezone,
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: false
-    }).formatToParts(now);
+    let userLocalTime;
+    try {
+      userLocalTime = new Intl.DateTimeFormat('en-US', {
+        timeZone: user.timezone,
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false
+      }).formatToParts(now);
+    } catch (tzError) {
+      detailedLog(`Invalid timezone for ${user.email}: ${user.timezone}`, tzError);
+      return false;
+    }
 
     // Extract hour and minute
     const hourPart = userLocalTime.find(part => part.type === 'hour');
     const minutePart = userLocalTime.find(part => part.type === 'minute');
+
+    if (!hourPart || !minutePart) {
+      detailedLog(`Could not parse local time for ${user.email}`, userLocalTime);
+      return false;
+    }
 
     const currentHour = parseInt(hourPart.value);
     const currentMinute = parseInt(minutePart.value);
@@ -69,16 +84,27 @@ function isTimeToSendEmail(user) {
       timezone: user.timezone,
       originalDeliveryTime: user.delivery_time,
       parsedTargetTime: { targetHour, targetMinute },
-      currentLocalTime: userLocalTime,
-      currentHour,
-      currentMinute
+      currentLocalTime: { hour: currentHour, minute: currentMinute },
+      fullLocalTime: userLocalTime
     });
 
-    // Check if current time exactly matches delivery time
+    // Use a 5-minute window for matching instead of requiring exact time match
+    // This allows for scheduling imprecision and edge function execution timing
     const hourMatch = currentHour === targetHour;
-    const minuteMatch = currentMinute === targetMinute;
+    const minuteWithinRange = Math.abs(currentMinute - targetMinute) <= 2; // 5-minute window (±2 minutes)
 
-    return hourMatch && minuteMatch;
+    const shouldSend = hourMatch && minuteWithinRange;
+    
+    // Additional logging for debug
+    if (hourMatch && Math.abs(currentMinute - targetMinute) <= 5) {
+      detailedLog(`Near delivery window for ${user.email}: ${shouldSend ? 'SENDING' : 'NOT SENDING'}`, {
+        targetTime: `${targetHour}:${targetMinute}`,
+        currentTime: `${currentHour}:${currentMinute}`,
+        minuteDifference: Math.abs(currentMinute - targetMinute)
+      });
+    }
+
+    return shouldSend;
   } catch (error) {
     detailedLog(`Time check error for ${user.email}`, error);
     return false;
@@ -114,7 +140,7 @@ async function generateContent(industry, toneName = 'professional', temperature 
 
     if (!response.ok) {
       const result = await response.json();
-      throw new Error(`OpenAI API error: ${result.error?.message || result.message}`);
+      throw new Error(`OpenAI API error: ${result.error?.message || result.message || response.statusText}`);
     }
 
     const json = await response.json();
@@ -153,6 +179,19 @@ serve(async (req) => {
   }
 
   try {
+    // Verify environment variables are set
+    if (!OPENAI_API_KEY || !RESEND_API_KEY || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      const missingVars = [
+        !OPENAI_API_KEY ? 'OPENAI_API_KEY' : null,
+        !RESEND_API_KEY ? 'RESEND_API_KEY' : null,
+        !SUPABASE_URL ? 'SUPABASE_URL' : null,
+        !SUPABASE_ANON_KEY ? 'SUPABASE_ANON_KEY' : null
+      ].filter(Boolean);
+      
+      detailedLog(`Missing environment variables: ${missingVars.join(', ')}`);
+      throw new Error(`Missing environment variables: ${missingVars.join(', ')}`);
+    }
+
     detailedLog('Starting scheduled email process');
 
     // Fetch all users with preferences
@@ -164,14 +203,41 @@ serve(async (req) => {
       throw new Error(`Failed to fetch users: ${fetchError.message}`);
     }
 
+    if (!users || users.length === 0) {
+      detailedLog('No users found in database');
+      return new Response(
+        JSON.stringify({ success: true, message: 'No users found to process' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     detailedLog(`Fetched ${users.length} total users`);
+
+    // Log some data about all users (with email partially obscured for privacy)
+    const userSummary = users.map(u => ({
+      email: u.email ? `${u.email.substring(0, 3)}...${u.email.substring(u.email.indexOf('@'))}` : 'missing',
+      auto_generate: u.auto_generate,
+      has_delivery_time: !!u.delivery_time,
+      has_timezone: !!u.timezone,
+      industry: u.industry
+    }));
+    detailedLog('User summary:', userSummary);
 
     // Filter users ready to receive emails
     const usersToProcess = users.filter(isTimeToSendEmail);
 
     detailedLog(`${usersToProcess.length} users ready to receive emails`);
+    
+    if (usersToProcess.length === 0) {
+      detailedLog('No users found in the current delivery window');
+      return new Response(
+        JSON.stringify({ success: true, message: 'No users in current delivery window' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Process each user
+    const results = [];
     for (const user of usersToProcess) {
       try {
         detailedLog(`Processing user: ${user.email}`, {
@@ -189,6 +255,8 @@ serve(async (req) => {
             user.temperature || 0.7
           );
           contentOptions.push(content);
+          // Small delay between API calls to avoid rate limiting
+          if (i < 2) await new Promise(r => setTimeout(r, 500));
         }
 
         // Format email content
@@ -208,6 +276,7 @@ serve(async (req) => {
         });
 
         detailedLog(`Email sent successfully to ${user.email}`, response);
+        results.push({ email: user.email, status: 'success', id: response.id });
 
         // Prepare content history payload
         const contentHistoryPayload = {
@@ -235,6 +304,7 @@ serve(async (req) => {
         }
       } catch (userError) {
         detailedLog(`Error processing user ${user.email}`, userError);
+        results.push({ email: user.email, status: 'error', message: userError.message });
       }
     }
 
@@ -242,7 +312,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        processed: usersToProcess.length 
+        processed: usersToProcess.length,
+        results
       }),
       { 
         headers: { 
@@ -279,23 +350,65 @@ function formatContentAsHtml(contentOptions, industry, template) {
     day: 'numeric' 
   });
 
-  return `
+  // Basic template for emails
+  const basicTemplate = `
     <!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>${industry} Industry Update</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        h1 {
+          color: #2c3e50;
+          border-bottom: 2px solid #eee;
+          padding-bottom: 10px;
+        }
+        h2 {
+          color: #3498db;
+          margin-top: 25px;
+        }
+        .content-option {
+          margin-bottom: 30px;
+          padding: 15px;
+          background-color: #f9f9f9;
+          border-left: 4px solid #3498db;
+        }
+        .footer {
+          margin-top: 30px;
+          padding-top: 15px;
+          border-top: 1px solid #eee;
+          font-size: 0.9em;
+          color: #7f8c8d;
+        }
+      </style>
     </head>
     <body>
       <h1>${industry} Industry Update - ${formattedDate}</h1>
       
       ${contentOptions.map((content, index) => `
-        <div>
+        <div class="content-option">
           <h2>Option ${index + 1}: ${content.title}</h2>
-          <p>${content.content}</p>
+          <p>${content.content.replace(/\n/g, '<br>')}</p>
         </div>
       `).join('')}
+      
+      <div class="footer">
+        <p>Generated by Writer Expert for your ${industry} content needs.</p>
+        <p>Questions or feedback? Reply directly to this email.</p>
+      </div>
     </body>
     </html>
   `;
+
+  // Use custom template if provided, otherwise use basic template
+  return template || basicTemplate;
 }
