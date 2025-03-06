@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { IndustrySelect } from "@/components/IndustrySelect";
 import { useToast } from "@/components/ui/use-toast";
@@ -10,8 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, Mail, CheckCircle } from "lucide-react";
+import { AlertTriangle, Mail, CheckCircle, Lock } from "lucide-react";
 import { ToneSelector } from "@/components/ToneSelector";
+import { SubscriptionManager } from "@/components/SubscriptionManager";
+import { AITemperatureSelector } from "@/components/AITemperatureSelector";
 
 const Index = () => {
   const [selectedIndustry, setSelectedIndustry] = useState("");
@@ -24,6 +25,8 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("preferences");
   const [autoGenerateEnabled, setAutoGenerateEnabled] = useState(true);
   const [toneName, setToneName] = useState("professional");
+  const [temperature, setTemperature] = useState(0.7);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'inactive' | 'expired'>('inactive');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -35,6 +38,11 @@ const Index = () => {
         
         // Fetch existing preferences for this user
         fetchUserPreferences(session.user.email);
+        
+        // If the email matches our admin email, set them as admin
+        if (session.user.email === "zaydadams07@gmail.com") {
+          setAdminUser(session.user.email);
+        }
       } else {
         console.log("No user session found");
       }
@@ -47,6 +55,11 @@ const Index = () => {
         setUserEmail(session.user.email);
         // Fetch preferences when user logs in
         fetchUserPreferences(session.user.email);
+        
+        // If the email matches our admin email, set them as admin
+        if (session.user.email === "zaydadams07@gmail.com") {
+          setAdminUser(session.user.email);
+        }
       } else {
         setUserEmail(null);
       }
@@ -54,6 +67,33 @@ const Index = () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Add function to set user as admin
+  const setAdminUser = async (email: string) => {
+    try {
+      console.log("Setting admin status for:", email);
+      const { error } = await supabase.functions.invoke('set-admin-user', {
+        body: { email }
+      });
+      
+      if (error) {
+        console.error("Error setting admin status:", error);
+        return;
+      }
+      
+      // Force refresh subscription status
+      setSubscriptionStatus('active');
+      console.log(`${email} set as admin with active subscription`);
+      
+      toast({
+        title: "Admin Access Granted",
+        description: "You have been granted admin access with full features.",
+        duration: 5000,
+      });
+    } catch (error) {
+      console.error('Error setting admin user:', error);
+    }
+  };
 
   const fetchUserPreferences = async (email: string) => {
     try {
@@ -77,6 +117,7 @@ const Index = () => {
         setTimezone(data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
         setAutoGenerateEnabled(data.auto_generate !== null ? data.auto_generate : true);
         setToneName(data.tone_name || "professional");
+        setTemperature(data.temperature || 0.7);
       }
     } catch (error) {
       console.error('Error fetching user preferences:', error);
@@ -93,6 +134,10 @@ const Index = () => {
     console.log("Selected tone:", tone);
   };
 
+  const handleSubscriptionStatusChange = (status: 'active' | 'inactive' | 'expired') => {
+    setSubscriptionStatus(status);
+  };
+
   const handleSubscribe = async () => {
     if (!userEmail || !selectedIndustry) {
       toast({
@@ -100,6 +145,17 @@ const Index = () => {
         description: !userEmail 
           ? "Please sign in to subscribe to updates." 
           : "Please select an industry first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check subscription status for paid features
+    if (subscriptionStatus !== 'active') {
+      setActiveTab("subscription");
+      toast({
+        title: "Subscription Required",
+        description: "Please subscribe to a plan to save your preferences and generate content.",
         variant: "destructive",
       });
       return;
@@ -122,6 +178,7 @@ const Index = () => {
             auto_generate: autoGenerateEnabled,
             user_id: userEmail,
             tone_name: toneName,
+            temperature: temperature,
           }
         ], { onConflict: 'user_id' });
         
@@ -140,6 +197,7 @@ const Index = () => {
           timezone: timezone,
           autoGenerate: autoGenerateEnabled,
           toneName: toneName,
+          temperature: temperature,
         },
       });
 
@@ -148,12 +206,45 @@ const Index = () => {
         throw error;
       }
 
+      // Remove the automatic email sending on preference save
+      // Instead, show a message about the scheduled delivery time
+      
+      // Calculate the next delivery time in user's timezone
+      const now = new Date();
+      const [hours, minutes] = deliveryTime.split(':').map(Number);
+      
+      let deliveryDate = new Date(now);
+      deliveryDate.setHours(hours, minutes, 0, 0);
+      
+      // If the time has already passed today, it will be scheduled for tomorrow
+      if (deliveryDate < now) {
+        deliveryDate.setDate(deliveryDate.getDate() + 1);
+      }
+      
+      // Format the date for display
+      const timeOptions: Intl.DateTimeFormatOptions = { 
+        hour: 'numeric', 
+        minute: 'numeric',
+        hour12: true
+      };
+      
+      const dateOptions: Intl.DateTimeFormatOptions = {
+        weekday: 'long',
+        month: 'short', 
+        day: 'numeric'
+      };
+      
+      const formattedTime = new Intl.DateTimeFormat('en-US', timeOptions).format(deliveryDate);
+      const formattedDate = new Intl.DateTimeFormat('en-US', dateOptions).format(deliveryDate);
+      
+      const scheduleMessage = autoGenerateEnabled
+        ? `Your content will be delivered at ${formattedTime} on ${formattedDate} in your local timezone.`
+        : "Auto-generation is disabled. You can send content manually using the 'Send Email Now' button.";
+
       toast({
-        title: "Success!",
-        description: autoGenerateEnabled 
-          ? "Your preferences have been saved. You'll receive daily content at " + deliveryTime + " in your timezone."
-          : "Your preferences have been saved. Auto-generation is disabled, but you can send content manually.",
-        duration: 5000,
+        title: "Preferences Saved Successfully",
+        description: scheduleMessage,
+        duration: 6000,
       });
     } catch (error) {
       console.error('Error subscribing:', error);
@@ -179,6 +270,17 @@ const Index = () => {
       return;
     }
 
+    // Check subscription status for paid features
+    if (subscriptionStatus !== 'active') {
+      setActiveTab("subscription");
+      toast({
+        title: "Subscription Required",
+        description: "Please subscribe to a plan to generate content.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSendingNow(true);
     try {
       console.log("Sending email request with:", {
@@ -188,6 +290,7 @@ const Index = () => {
         deliveryTime,
         timezone,
         toneName,
+        temperature,
         sendNow: true
       });
 
@@ -206,6 +309,7 @@ const Index = () => {
           deliveryTime: deliveryTime,
           timezone: timezone,
           toneName: toneName,
+          temperature: temperature,
           sendNow: true
         },
       });
@@ -265,6 +369,86 @@ const Index = () => {
     return { format: selectedTemplate, style: "x-style" };
   };
 
+  // Get tone-specific content for previews
+  // Define a proper return type to ensure we handle it correctly
+  const getToneSpecificContent = (tone: string, contentType: string): string | string[] => {
+    switch (tone) {
+      case "professional":
+        if (contentType === "heading") {
+          return "The Strategic Implications of Client Selection:";
+        } else if (contentType === "intro") {
+          return "Analysis indicates that optimal client selection criteria significantly impact operational efficiency and profitability metrics.";
+        } else if (contentType === "closing") {
+          return "Implementation of structured client evaluation protocols is strongly recommended.";
+        } else if (contentType === "bullet") {
+          return ["Increased resource allocation efficiency", "Reduced operational friction", "Enhanced revenue predictability", "Improved team productivity metrics", "Strategic alignment with core business objectives"];
+        }
+        break;
+      
+      case "conversational":
+        if (contentType === "heading") {
+          return "Let's talk about picking the right clients:";
+        } else if (contentType === "intro") {
+          return "I've noticed something interesting about clients lately, and I thought you might find this helpful too.";
+        } else if (contentType === "closing") {
+          return "What do you think? Have you had similar experiences with clients?";
+        } else if (contentType === "bullet") {
+          return ["They're much easier to work with", "You'll spend less time on revisions", "Projects flow more smoothly", "Your team will thank you", "You'll actually enjoy your work more"];
+        }
+        break;
+      
+      case "enthusiastic":
+        if (contentType === "heading") {
+          return "Transform Your Business With Amazing Clients!";
+        } else if (contentType === "intro") {
+          return "I'm SO excited to share this game-changing insight that completely revolutionized my business!";
+        } else if (contentType === "closing") {
+          return "Try this strategy TODAY and watch your business SOAR to new heights!";
+        } else if (contentType === "bullet") {
+          return ["They ENERGIZE your entire team!", "Projects finish in RECORD time!", "Referrals start POURING in!", "Your work becomes INCREDIBLY fulfilling!", "Profits SKYROCKET almost immediately!"];
+        }
+        break;
+      
+      case "humorous":
+        if (contentType === "heading") {
+          return "The Client Survival Guide: Choose Wisely or Die Trying";
+        } else if (contentType === "intro") {
+          return "Ever felt like some clients were sent specifically to test your will to live? Let's fix that.";
+        } else if (contentType === "closing") {
+          return "Remember: life's too short for bad clients. That's why it feels so long sometimes.";
+        } else if (contentType === "bullet") {
+          return ["Your hair will stop falling out", "Your eye twitch might finally go away", "You'll stop having nightmares about email notifications", "Your therapist will miss you", "You might actually take a vacation that doesn't involve hiding from calls"];
+        }
+        break;
+      
+      default: // custom or any other tone
+        if (contentType === "heading") {
+          return "Finding Your Ideal Client Match";
+        } else if (contentType === "intro") {
+          return "Based on research and experience, the quality of clients you choose has a substantial impact on your business success.";
+        } else if (contentType === "closing") {
+          return "Consider implementing a structured approach to client selection to improve your overall business experience.";
+        } else if (contentType === "bullet") {
+          return ["Better alignment with your values", "Improved workflow efficiency", "Higher satisfaction rates", "Increased referral opportunities", "Enhanced long-term profitability"];
+        }
+    }
+    
+    // Default return values for each content type
+    if (contentType === "bullet") {
+      return ["Item 1", "Item 2", "Item 3", "Item 4", "Item 5"];
+    }
+    return contentType === "heading" ? "Content Heading" : 
+           contentType === "intro" ? "Content introduction." : 
+           "Content closing.";
+  };
+
+  // Helper function to ensure bullet points are always returned as an array
+  const getBulletPoints = (tone: string): string[] => {
+    const content = getToneSpecificContent(tone, "bullet");
+    // Ensure we always return an array
+    return Array.isArray(content) ? content : ["Item 1", "Item 2", "Item 3", "Item 4", "Item 5"];
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#020817] to-[#0F172A] py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
@@ -283,10 +467,11 @@ const Index = () => {
           )}
         </div>
 
-        <Tabs defaultValue="preferences" className="mb-8" onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="preferences" className="mb-8" onValueChange={setActiveTab} value={activeTab}>
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="preferences">Preferences</TabsTrigger>
             <TabsTrigger value="preview">Content Preview</TabsTrigger>
+            <TabsTrigger value="subscription">Subscription</TabsTrigger>
           </TabsList>
           
           <TabsContent value="preferences" className="space-y-6">
@@ -319,6 +504,27 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <ToneSelector onSelect={handleToneSelect} initialValue={toneName} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>AI Temperature</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AITemperatureSelector 
+                  temperature={temperature} 
+                  onTemperatureChange={setTemperature} 
+                />
+                
+                {subscriptionStatus !== 'active' && (
+                  <div className="mt-4 p-3 bg-gray-100 border rounded-md flex items-center space-x-2">
+                    <Lock className="h-4 w-4 text-gray-500" />
+                    <span className="text-sm text-gray-600">
+                      Subscribe to adjust AI temperature for more creative or precise content
+                    </span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -366,6 +572,13 @@ const Index = () => {
                 >
                   {isSendingNow ? "Sending email..." : "Send Email Now"}
                 </Button>
+                
+                {subscriptionStatus !== 'active' && (
+                  <p className="text-center text-amber-400 text-sm flex items-center justify-center">
+                    <AlertTriangle className="h-4 w-4 mr-1" />
+                    Subscribe to unlock all features
+                  </p>
+                )}
               </div>
             ) : (
               <p className="text-center text-[#8E9196]">
@@ -384,31 +597,27 @@ const Index = () => {
                   {/* X.com style with bullet points */}
                   {getTemplateParts().format === "bullet-points" && getTemplateParts().style === "x-style" && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold text-gray-800">The hidden cost of cheap clients:</h3>
+                      <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
                       <ul className="list-disc pl-6 space-y-2">
-                        <li>More meetings</li>
-                        <li>More revisions</li>
-                        <li>More drama</li>
-                        <li>More scope creep</li>
-                        <li>More turnover</li>
+                        {getBulletPoints(toneName).map((item, index) => (
+                          <li key={index}>{item}</li>
+                        ))}
                       </ul>
-                      <p className="font-medium text-gray-800 pt-2">Your cheapest clients will cost you the most.</p>
+                      <p className="font-medium text-gray-800 pt-2">{getToneSpecificContent(toneName, "closing")}</p>
                     </div>
                   )}
 
                   {/* LinkedIn style with bullet points */}
                   {getTemplateParts().format === "bullet-points" && getTemplateParts().style === "linkedin-style" && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold text-gray-800">Why Quality Clients Are Essential for Business Growth</h3>
-                      <p className="text-gray-600">After 10+ years working with hundreds of clients, I've noticed a consistent pattern that impacts profitability:</p>
+                      <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
+                      <p className="text-gray-600">{getToneSpecificContent(toneName, "intro")}</p>
                       <ul className="list-disc pl-6 space-y-2">
-                        <li>Low-paying clients often require more meeting time and hand-holding</li>
-                        <li>They typically request multiple rounds of revisions</li>
-                        <li>They create unnecessary interpersonal complications</li>
-                        <li>They frequently ask for "just one more thing" outside the agreement</li>
-                        <li>They tend to have higher turnover, creating business instability</li>
+                        {getBulletPoints(toneName).map((item, index) => (
+                          <li key={index}>{item}</li>
+                        ))}
                       </ul>
-                      <p className="font-medium text-gray-800 pt-2">The clients who pay you the least will inevitably cost you the most in time, energy, and opportunity cost. What's been your experience?</p>
+                      <p className="font-medium text-gray-800 pt-2">{getToneSpecificContent(toneName, "closing")}</p>
                       <p className="text-gray-500 text-sm pt-2">#BusinessStrategy #ClientRelationships #Entrepreneurship</p>
                     </div>
                   )}
@@ -416,31 +625,27 @@ const Index = () => {
                   {/* X.com style with numbered list */}
                   {getTemplateParts().format === "numbered-list" && getTemplateParts().style === "x-style" && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold text-gray-800">5 Steps to Effective Time Management:</h3>
+                      <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
                       <ol className="list-decimal pl-6 space-y-2">
-                        <li>Prioritize your most important tasks</li>
-                        <li>Break large projects into smaller tasks</li>
-                        <li>Eliminate distractions during focus time</li>
-                        <li>Schedule breaks to maintain productivity</li>
-                        <li>Review and adjust your system regularly</li>
+                        {getBulletPoints(toneName).map((item, index) => (
+                          <li key={index}>{item}</li>
+                        ))}
                       </ol>
-                      <p className="font-medium text-gray-800 pt-2">Master your time to master your business.</p>
+                      <p className="font-medium text-gray-800 pt-2">{getToneSpecificContent(toneName, "closing")}</p>
                     </div>
                   )}
 
                   {/* LinkedIn style with numbered list */}
                   {getTemplateParts().format === "numbered-list" && getTemplateParts().style === "linkedin-style" && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold text-gray-800">The 5-Step Productivity Framework That Transformed My Business</h3>
-                      <p className="text-gray-600">After struggling with overwhelm and burnout for years, I developed this system that's helped me and hundreds of my clients take back control of our time:</p>
+                      <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
+                      <p className="text-gray-600">{getToneSpecificContent(toneName, "intro")}</p>
                       <ol className="list-decimal pl-6 space-y-2">
-                        <li><strong>Identify your high-leverage activities</strong> - Focus first on the 20% of work that delivers 80% of your results</li>
-                        <li><strong>Use task decomposition</strong> - Break complex projects into concrete, actionable steps of 25-90 minutes each</li>
-                        <li><strong>Create distraction-free environments</strong> - Turn off notifications, use focus apps, and communicate boundaries</li>
-                        <li><strong>Implement strategic breaks</strong> - Use the Pomodoro technique or similar to maintain peak mental performance</li>
-                        <li><strong>Conduct weekly reviews</strong> - Reflect on what worked and what didn't to continuously refine your approach</li>
+                        {getBulletPoints(toneName).map((item, index) => (
+                          <li key={index}><strong>Key point {index + 1}</strong> - {item}</li>
+                        ))}
                       </ol>
-                      <p className="font-medium text-gray-800 pt-2">The most successful professionals aren't naturally more productive - they've simply built better systems. What productivity techniques have you found most effective?</p>
+                      <p className="font-medium text-gray-800 pt-2">{getToneSpecificContent(toneName, "closing")}</p>
                       <p className="text-gray-500 text-sm pt-2">#ProductivityTips #TimeManagement #WorkSmarter</p>
                     </div>
                   )}
@@ -448,34 +653,29 @@ const Index = () => {
                   {/* X.com style with tips format */}
                   {getTemplateParts().format === "tips-format" && getTemplateParts().style === "x-style" && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold text-gray-800">QUICK TIP:</h3>
-                      <p className="text-gray-800">Instead of scheduling back-to-back meetings, build in 10-minute buffers between each one.</p>
-                      <p className="text-gray-800">This gives you time to:
-                        <span className="block pl-4 pt-2">✓ Take notes from the previous meeting</span>
-                        <span className="block pl-4">✓ Prepare for the next conversation</span>
-                        <span className="block pl-4">✓ Handle urgent emails or messages</span>
-                        <span className="block pl-4">✓ Take a mental break</span>
+                      <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
+                      <p className="text-gray-800">{getToneSpecificContent(toneName, "intro")}</p>
+                      <p className="text-gray-800">Key points to consider:
+                        {getBulletPoints(toneName).map((item, index) => (
+                          <span key={index} className="block pl-4 pt-2">✓ {item}</span>
+                        ))}
                       </p>
-                      <p className="font-medium text-gray-800 pt-2">Small buffers create massive productivity gains.</p>
+                      <p className="font-medium text-gray-800 pt-2">{getToneSpecificContent(toneName, "closing")}</p>
                     </div>
                   )}
 
                   {/* LinkedIn style with tips format */}
                   {getTemplateParts().format === "tips-format" && getTemplateParts().style === "linkedin-style" && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold text-gray-800">One Meeting Hack That Saved My Sanity</h3>
-                      <p className="text-gray-600">After years of feeling constantly rushed and overwhelmed, I discovered a simple calendar trick that's been a game-changer for my productivity and mental wellbeing:</p>
-                      <p className="text-gray-800 font-medium mt-4">PRODUCTIVITY TIP:</p>
-                      <p className="text-gray-800">Stop scheduling meetings back-to-back. Instead, add 10-15 minute buffers between every meeting on your calendar.</p>
-                      <p className="text-gray-800 mt-3">These intentional gaps allow you to:
-                        <span className="block pl-4 pt-2">✓ Document key takeaways while they're fresh in your mind</span>
-                        <span className="block pl-4">✓ Review materials for your upcoming conversation</span>
-                        <span className="block pl-4">✓ Respond to time-sensitive communications</span>
-                        <span className="block pl-4">✓ Reset mentally to be fully present in your next interaction</span>
-                        <span className="block pl-4">✓ Handle basic needs like grabbing water or taking a bio break</span>
+                      <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
+                      <p className="text-gray-600">{getToneSpecificContent(toneName, "intro")}</p>
+                      <p className="text-gray-800 font-medium mt-4">PROFESSIONAL TIP:</p>
+                      <p className="text-gray-800">Consider these important factors:
+                        {getBulletPoints(toneName).map((item, index) => (
+                          <span key={index} className="block pl-4 pt-2">✓ {item}</span>
+                        ))}
                       </p>
-                      <p className="font-medium text-gray-800 pt-3">I've found that these small breathers between meetings have dramatically improved my meeting effectiveness, reduced stress, and actually allowed me to be more present with clients and team members.</p>
-                      <p className="text-gray-600 pt-2">What meeting strategies have made the biggest difference for you?</p>
+                      <p className="font-medium text-gray-800 pt-3">{getToneSpecificContent(toneName, "closing")}</p>
                       <p className="text-gray-500 text-sm pt-2">#MeetingProductivity #WorkLifeBalance #TimeManagement</p>
                     </div>
                   )}
@@ -483,44 +683,38 @@ const Index = () => {
                   {/* Thought Leadership style examples */}
                   {getTemplateParts().style === "thought-leadership" && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold text-gray-800">The 80/20 Rule of Client Selection Most Businesses Get Wrong</h3>
-                      <p className="text-gray-600">Industry conventional wisdom has it backward. The focus shouldn't be on getting MORE clients - it should be on identifying and serving the RIGHT clients.</p>
+                      <h3 className="text-xl font-bold text-gray-800">{getToneSpecificContent(toneName, "heading")}</h3>
+                      <p className="text-gray-600">{getToneSpecificContent(toneName, "intro")}</p>
                       
                       {getTemplateParts().format === "bullet-points" && (
                         <ul className="list-disc pl-6 space-y-2 mt-4">
-                          <li>Cheap clients don't just pay less - they cost more in emotional labor</li>
-                          <li>Premium clients who value expertise make decisions faster</li>
-                          <li>A portfolio of ideal clients creates compound growth</li>
-                          <li>One toxic client can undo the profit of three good ones</li>
-                          <li>Client selection is your most important business filtering system</li>
+                          {getBulletPoints(toneName).map((item, index) => (
+                            <li key={index}>{item}</li>
+                          ))}
                         </ul>
                       )}
                       
                       {getTemplateParts().format === "numbered-list" && (
                         <ol className="list-decimal pl-6 space-y-2 mt-4">
-                          <li><strong>Price is a filtering mechanism</strong> - Use it strategically to pre-qualify</li>
-                          <li><strong>Opportunity cost is real</strong> - Every bad client blocks a potential great one</li>
-                          <li><strong>Document red flags</strong> - Create a formal system to identify problem clients early</li>
-                          <li><strong>Gracefully exit unprofitable relationships</strong> - Have a referral network ready</li>
-                          <li><strong>Focus on lifetime value</strong> - Create experiences worth 10x what you charge</li>
+                          {getBulletPoints(toneName).map((item, index) => (
+                            <li key={index}><strong>Point {index + 1}:</strong> {item}</li>
+                          ))}
                         </ol>
                       )}
                       
                       {getTemplateParts().format === "tips-format" && (
                         <div className="mt-4">
-                          <p className="font-medium text-gray-800">THE CONTRARIAN VIEW:</p>
-                          <p className="text-gray-800">Firing your worst client will make you more money than landing a new one.</p>
-                          <p className="text-gray-800 mt-3">Here's why:
-                            <span className="block pl-4 pt-2">✓ You instantly reclaim hours of unpaid emotional labor</span>
-                            <span className="block pl-4">✓ Your team's morale and productivity improves</span>
-                            <span className="block pl-4">✓ You create space to serve existing clients better</span>
-                            <span className="block pl-4">✓ You open capacity for ideal clients to find you</span>
-                            <span className="block pl-4">✓ You regain strategic focus instead of managing problems</span>
+                          <p className="font-medium text-gray-800">KEY INSIGHTS:</p>
+                          <p className="text-gray-800">{getToneSpecificContent(toneName, "intro")}</p>
+                          <p className="text-gray-800 mt-3">Consider these factors:
+                            {getBulletPoints(toneName).map((item, index) => (
+                              <span key={index} className="block pl-4 pt-2">✓ {item}</span>
+                            ))}
                           </p>
                         </div>
                       )}
                       
-                      <p className="font-medium text-gray-800 pt-3">The most successful businesses aren't the ones with the most clients - they're the ones with the best clients. This distinction makes all the difference between struggling and thriving.</p>
+                      <p className="font-medium text-gray-800 pt-3">{getToneSpecificContent(toneName, "closing")}</p>
                     </div>
                   )}
 
@@ -528,58 +722,58 @@ const Index = () => {
                   {getTemplateParts().style === "newsletter-style" && (
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold text-gray-800">Hey there,</h3>
-                      <p className="text-gray-600">I made a costly mistake last week that I thought might help you avoid the same pitfall...</p>
+                      <p className="text-gray-600">{getToneSpecificContent(toneName, "intro")}</p>
                       
                       {getTemplateParts().format === "bullet-points" && (
                         <div className="mt-3">
-                          <p className="text-gray-800">I said yes to a client project that had several red flags I chose to ignore:</p>
+                          <p className="text-gray-800">Here are some key insights I've gathered:</p>
                           <ul className="list-disc pl-6 space-y-2 mt-2">
-                            <li>They haggled over my rate from the very first call</li>
-                            <li>They wanted multiple revisions to the proposal</li>
-                            <li>They had gone through three other consultants this year</li>
-                            <li>They needed everything "urgently"</li>
-                            <li>They refused to follow my onboarding process</li>
+                            {getBulletPoints(toneName).map((item, index) => (
+                              <li key={index}>{item}</li>
+                            ))}
                           </ul>
                         </div>
                       )}
                       
                       {getTemplateParts().format === "numbered-list" && (
                         <div className="mt-3">
-                          <p className="text-gray-800">Here's what I've learned about protecting your time and energy:</p>
+                          <p className="text-gray-800">Here's what I've learned about this topic:</p>
                           <ol className="list-decimal pl-6 space-y-2 mt-2">
-                            <li>Trust your gut when something feels off about a prospect</li>
-                            <li>Implement a client filtering system and stick to it</li>
-                            <li>Charge enough that you can provide exceptional service</li>
-                            <li>Set clear boundaries from the very first interaction</li>
-                            <li>Remember that saying no to the wrong clients makes room for the right ones</li>
+                            {getBulletPoints(toneName).map((item, index) => (
+                              <li key={index}>{item}</li>
+                            ))}
                           </ol>
                         </div>
                       )}
                       
                       {getTemplateParts().format === "tips-format" && (
                         <div className="mt-3">
-                          <p className="text-gray-800">After that experience, here's my new rule:</p>
-                          <p className="font-medium text-gray-800 mt-2">THE "SLEEP ON IT" RULE:</p>
-                          <p className="text-gray-800">Never agree to a new project during the first call. Always take at least 24 hours to consider if it's truly a good fit.</p>
-                          <p className="text-gray-800 mt-3">This simple pause allows you to:
-                            <span className="block pl-4 pt-2">✓ Process any subtle red flags you noticed</span>
-                            <span className="block pl-4">✓ Consider how the work fits into your current commitments</span>
-                            <span className="block pl-4">✓ Check if you're saying yes out of excitement or desperation</span>
-                            <span className="block pl-4">✓ Craft a thoughtful proposal rather than a rushed one</span>
+                          <p className="text-gray-800">{getToneSpecificContent(toneName, "heading")}</p>
+                          <p className="text-gray-800 mt-3">Here's what I've discovered:
+                            {getBulletPoints(toneName).map((item, index) => (
+                              <span key={index} className="block pl-4 pt-2">✓ {item}</span>
+                            ))}
                           </p>
                         </div>
                       )}
                       
-                      <p className="text-gray-800 pt-3">I hope this helps you avoid the time-drain I experienced this week! Sometimes the most profitable decision is saying "no" to work that doesn't align with your values and vision.</p>
+                      <p className="text-gray-800 pt-3">{getToneSpecificContent(toneName, "closing")}</p>
                       <p className="text-gray-800 pt-2">Talk soon,<br />Your Name</p>
                     </div>
                   )}
                 </div>
                 <p className="text-sm text-[#8E9196] mt-4">
-                  This is a preview of how your content will be formatted. Actual content will be customized to your selected industry.
+                  This is a preview of how your content will be formatted using your selected tone. Actual content will be customized to your industry.
                 </p>
               </CardContent>
             </Card>
+          </TabsContent>
+          
+          <TabsContent value="subscription">
+            <SubscriptionManager 
+              userEmail={userEmail} 
+              onSubscriptionStatusChange={handleSubscriptionStatusChange}
+            />
           </TabsContent>
         </Tabs>
       </div>
