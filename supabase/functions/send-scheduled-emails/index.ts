@@ -18,15 +18,26 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const resend = new Resend(RESEND_API_KEY);
 
 // Detailed logging function
-function detailedLog(message: string, data?: any) {
+async function detailedLog(message: string, data?: any) {
   const timestamp = new Date().toISOString();
   console.log(`[${timestamp}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  
+  try {
+    // Store important logs in database
+    await supabase.from('debug_logs').insert({
+      message: message,
+      data: data || null,
+      created_at: new Date()
+    });
+  } catch (error) {
+    // Silent fail for logging errors
+  }
 }
 
 // Function to generate content
 async function generateContent(industry, toneName = 'professional', temperature = 0.7) {
   try {
-    detailedLog(`Generating content for industry: ${industry}, tone: ${toneName}`);
+    await detailedLog(`Generating content for industry: ${industry}, tone: ${toneName}`);
     
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -78,7 +89,7 @@ async function generateContent(industry, toneName = 'professional', temperature 
       snippet: generatedText.substring(0, 300) + (generatedText.length > 300 ? '...' : '')
     };
   } catch (error) {
-    detailedLog("Error generating content", error);
+    await detailedLog("Error generating content", error);
     throw error;
   }
 }
@@ -91,49 +102,30 @@ serve(async (req) => {
   }
 
   try {
-    // Verify environment variables are set
-    if (!OPENAI_API_KEY || !RESEND_API_KEY || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      const missingVars = [
-        !OPENAI_API_KEY ? 'OPENAI_API_KEY' : null,
-        !RESEND_API_KEY ? 'RESEND_API_KEY' : null,
-        !SUPABASE_URL ? 'SUPABASE_URL' : null,
-        !SUPABASE_ANON_KEY ? 'SUPABASE_ANON_KEY' : null
-      ].filter(Boolean);
-      
-      detailedLog(`Missing environment variables: ${missingVars.join(', ')}`);
-      throw new Error(`Missing environment variables: ${missingVars.join(', ')}`);
-    }
-
-    detailedLog('Starting scheduled email process');
+    await detailedLog('Starting scheduled email process');
 
     // Parse request body to get users from the SQL cron job
     const reqBody = await req.json();
     const usersToProcess = reqBody.users || [];
 
-    detailedLog(`Received ${usersToProcess.length} users from SQL cron job`);
+    await detailedLog(`Received ${usersToProcess.length} users from SQL cron job`);
     
     if (usersToProcess.length === 0) {
-      detailedLog('No users to process in this batch');
+      await detailedLog('No users to process in this batch');
       return new Response(
         JSON.stringify({ success: true, message: 'No users to process' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Log summary of users to process
-    const userSummary = usersToProcess.map(u => ({
-      email: u.email ? `${u.email.substring(0, 3)}...${u.email.substring(u.email.indexOf('@'))}` : 'missing',
-      industry: u.industry
-    }));
-    detailedLog('Users to process:', userSummary);
-
     // Process each user
     const results = [];
     for (const user of usersToProcess) {
       try {
-        detailedLog(`Processing user: ${user.email}`, {
+        await detailedLog(`Processing user: ${user.email}`, {
           industry: user.industry,
-          timezone: user.timezone
+          timezone: user.timezone,
+          template: user.template
         });
 
         // Generate 3 content options
@@ -149,7 +141,7 @@ serve(async (req) => {
           if (i < 2) await new Promise(r => setTimeout(r, 500));
         }
 
-        // Format email content
+        // Format email content based on template
         const htmlContent = formatContentAsHtml(
           contentOptions, 
           user.industry, 
@@ -165,7 +157,7 @@ serve(async (req) => {
           reply_to: "shaun@writer.expert"
         });
 
-        detailedLog(`Email sent successfully to ${user.email}`, response);
+        await detailedLog(`Email sent successfully to ${user.email}`, response);
         results.push({ email: user.email, status: 'success', id: response.id });
 
         // Prepare content history payload
@@ -185,15 +177,15 @@ serve(async (req) => {
           .insert(contentHistoryPayload);
 
         if (historyError) {
-          detailedLog(`Error inserting content history for ${user.email}`, {
+          await detailedLog(`Error inserting content history for ${user.email}`, {
             error: historyError,
             payload: contentHistoryPayload
           });
         } else {
-          detailedLog(`Successfully inserted content history for ${user.email}`, insertedData);
+          await detailedLog(`Successfully inserted content history for ${user.email}`, insertedData);
         }
       } catch (userError) {
-        detailedLog(`Error processing user ${user.email}`, userError);
+        await detailedLog(`Error processing user ${user.email}`, userError);
         results.push({ email: user.email, status: 'error', message: userError.message });
       }
     }
@@ -213,7 +205,7 @@ serve(async (req) => {
       }
     );
   } catch (globalError) {
-    detailedLog('Global error in scheduled emails', globalError);
+    await detailedLog('Global error in scheduled emails', globalError);
 
     return new Response(
       JSON.stringify({ 
@@ -231,7 +223,7 @@ serve(async (req) => {
 });
 
 // Format content as HTML email
-function formatContentAsHtml(contentOptions, industry, template) {
+function formatContentAsHtml(contentOptions, industry, templateName) {
   const today = new Date();
   const formattedDate = today.toLocaleDateString('en-US', { 
     weekday: 'long', 
@@ -240,8 +232,8 @@ function formatContentAsHtml(contentOptions, industry, template) {
     day: 'numeric' 
   });
 
-  // Basic template for emails
-  const basicTemplate = `
+  // Default template (styled)
+  const defaultTemplate = `
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -299,6 +291,164 @@ function formatContentAsHtml(contentOptions, industry, template) {
     </html>
   `;
 
-  // Use custom template if provided, otherwise use basic template
-  return template || basicTemplate;
+  // Numbered list template
+  const numberedListTemplate = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${industry} Industry Update</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        h1 {
+          color: #2c3e50;
+          border-bottom: 2px solid #eee;
+          padding-bottom: 10px;
+        }
+        h2 {
+          color: #3498db;
+          margin-top: 25px;
+        }
+        ol {
+          padding-left: 20px;
+        }
+        li {
+          margin-bottom: 10px;
+        }
+        .content-option {
+          margin-bottom: 30px;
+          padding: 15px;
+          background-color: #f9f9f9;
+          border-left: 4px solid #3498db;
+        }
+        .footer {
+          margin-top: 30px;
+          padding-top: 15px;
+          border-top: 1px solid #eee;
+          font-size: 0.9em;
+          color: #7f8c8d;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>${industry} Industry Update - ${formattedDate}</h1>
+      
+      ${contentOptions.map((content, index) => {
+        // Convert content into bullet points by splitting paragraphs
+        const paragraphs = content.content.split('\n\n').filter(p => p.trim());
+        const listItems = paragraphs.map(p => `<li>${p}</li>`).join('');
+        
+        return `
+          <div class="content-option">
+            <h2>Option ${index + 1}: ${content.title}</h2>
+            <ol>
+              ${listItems}
+            </ol>
+          </div>
+        `;
+      }).join('')}
+      
+      <div class="footer">
+        <p>Generated by Writer Expert for your ${industry} content needs.</p>
+        <p>Questions or feedback? Reply directly to this email.</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Clean bullet points template
+  const bulletPointsTemplate = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${industry} Industry Update</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        h1 {
+          color: #2c3e50;
+          border-bottom: 2px solid #eee;
+          padding-bottom: 10px;
+        }
+        h2 {
+          color: #3498db;
+          margin-top: 25px;
+        }
+        ul {
+          padding-left: 20px;
+          list-style-type: disc;
+        }
+        li {
+          margin-bottom: 10px;
+        }
+        .content-option {
+          margin-bottom: 30px;
+          padding: 15px;
+          background-color: #f9f9f9;
+          border-left: 4px solid #3498db;
+        }
+        .footer {
+          margin-top: 30px;
+          padding-top: 15px;
+          border-top: 1px solid #eee;
+          font-size: 0.9em;
+          color: #7f8c8d;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>${industry} Industry Update - ${formattedDate}</h1>
+      
+      ${contentOptions.map((content, index) => {
+        // Convert content into bullet points by splitting paragraphs
+        const paragraphs = content.content.split('\n\n').filter(p => p.trim());
+        const listItems = paragraphs.map(p => `<li>${p}</li>`).join('');
+        
+        return `
+          <div class="content-option">
+            <h2>Option ${index + 1}: ${content.title}</h2>
+            <ul>
+              ${listItems}
+            </ul>
+          </div>
+        `;
+      }).join('')}
+      
+      <div class="footer">
+        <p>Generated by Writer Expert for your ${industry} content needs.</p>
+        <p>Questions or feedback? Reply directly to this email.</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Select template based on templateName
+  if (templateName) {
+    await detailedLog(`Using template: ${templateName}`);
+    
+    if (templateName.includes('numbered-list')) {
+      return numberedListTemplate;
+    } else if (templateName.includes('bullet-points')) {
+      return bulletPointsTemplate;
+    }
+  }
+
+  // Default template if no match or no template specified
+  return defaultTemplate;
 }
