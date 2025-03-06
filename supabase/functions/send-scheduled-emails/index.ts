@@ -23,94 +23,6 @@ function detailedLog(message: string, data?: any) {
   console.log(`[${timestamp}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
 }
 
-// Parse delivery time (handle HH:MM:SS format)
-function parseDeliveryTime(timeString: string) {
-  // Split the time and take only hours and minutes
-  const [hours, minutes] = timeString.split(':').map(Number);
-  return { hours, minutes };
-}
-
-// Improved function to determine if it's time to send email for a user
-// Uses a 5-minute window instead of requiring exact time match
-function isTimeToSendEmail(user) {
-  try {
-    // Skip if auto-generate is disabled
-    if (!user.auto_generate) {
-      detailedLog(`Skipping ${user.email} - auto-generate disabled`);
-      return false;
-    }
-
-    // Validate delivery time and timezone
-    if (!user.delivery_time || !user.timezone) {
-      detailedLog(`Skipping ${user.email} - missing delivery time or timezone: ${JSON.stringify({ 
-        delivery_time: user.delivery_time, 
-        timezone: user.timezone 
-      })}`);
-      return false;
-    }
-
-    // Parse delivery time
-    const { hours: targetHour, minutes: targetMinute } = parseDeliveryTime(user.delivery_time);
-
-    // Get current time in the user's timezone
-    const now = new Date();
-    let userLocalTime;
-    try {
-      userLocalTime = new Intl.DateTimeFormat('en-US', {
-        timeZone: user.timezone,
-        hour: 'numeric',
-        minute: 'numeric',
-        hour12: false
-      }).formatToParts(now);
-    } catch (tzError) {
-      detailedLog(`Invalid timezone for ${user.email}: ${user.timezone}`, tzError);
-      return false;
-    }
-
-    // Extract hour and minute
-    const hourPart = userLocalTime.find(part => part.type === 'hour');
-    const minutePart = userLocalTime.find(part => part.type === 'minute');
-
-    if (!hourPart || !minutePart) {
-      detailedLog(`Could not parse local time for ${user.email}`, userLocalTime);
-      return false;
-    }
-
-    const currentHour = parseInt(hourPart.value);
-    const currentMinute = parseInt(minutePart.value);
-
-    // Detailed logging for debugging
-    detailedLog(`Email timing check for ${user.email}`, {
-      timezone: user.timezone,
-      originalDeliveryTime: user.delivery_time,
-      parsedTargetTime: { targetHour, targetMinute },
-      currentLocalTime: { hour: currentHour, minute: currentMinute },
-      fullLocalTime: userLocalTime
-    });
-
-    // Use a 5-minute window for matching instead of requiring exact time match
-    // This allows for scheduling imprecision and edge function execution timing
-    const hourMatch = currentHour === targetHour;
-    const minuteWithinRange = Math.abs(currentMinute - targetMinute) <= 2; // 5-minute window (±2 minutes)
-
-    const shouldSend = hourMatch && minuteWithinRange;
-    
-    // Additional logging for debug
-    if (hourMatch && Math.abs(currentMinute - targetMinute) <= 5) {
-      detailedLog(`Near delivery window for ${user.email}: ${shouldSend ? 'SENDING' : 'NOT SENDING'}`, {
-        targetTime: `${targetHour}:${targetMinute}`,
-        currentTime: `${currentHour}:${currentMinute}`,
-        minuteDifference: Math.abs(currentMinute - targetMinute)
-      });
-    }
-
-    return shouldSend;
-  } catch (error) {
-    detailedLog(`Time check error for ${user.email}`, error);
-    return false;
-  }
-}
-
 // Function to generate content
 async function generateContent(industry, toneName = 'professional', temperature = 0.7) {
   try {
@@ -194,47 +106,26 @@ serve(async (req) => {
 
     detailedLog('Starting scheduled email process');
 
-    // Fetch all users with preferences
-    const { data: users, error: fetchError } = await supabase
-      .from('user_industry_preferences')
-      .select('*');
+    // Parse request body to get users from the SQL cron job
+    const reqBody = await req.json();
+    const usersToProcess = reqBody.users || [];
 
-    if (fetchError) {
-      throw new Error(`Failed to fetch users: ${fetchError.message}`);
-    }
-
-    if (!users || users.length === 0) {
-      detailedLog('No users found in database');
-      return new Response(
-        JSON.stringify({ success: true, message: 'No users found to process' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    detailedLog(`Fetched ${users.length} total users`);
-
-    // Log some data about all users (with email partially obscured for privacy)
-    const userSummary = users.map(u => ({
-      email: u.email ? `${u.email.substring(0, 3)}...${u.email.substring(u.email.indexOf('@'))}` : 'missing',
-      auto_generate: u.auto_generate,
-      has_delivery_time: !!u.delivery_time,
-      has_timezone: !!u.timezone,
-      industry: u.industry
-    }));
-    detailedLog('User summary:', userSummary);
-
-    // Filter users ready to receive emails
-    const usersToProcess = users.filter(isTimeToSendEmail);
-
-    detailedLog(`${usersToProcess.length} users ready to receive emails`);
+    detailedLog(`Received ${usersToProcess.length} users from SQL cron job`);
     
     if (usersToProcess.length === 0) {
-      detailedLog('No users found in the current delivery window');
+      detailedLog('No users to process in this batch');
       return new Response(
-        JSON.stringify({ success: true, message: 'No users in current delivery window' }),
+        JSON.stringify({ success: true, message: 'No users to process' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Log summary of users to process
+    const userSummary = usersToProcess.map(u => ({
+      email: u.email ? `${u.email.substring(0, 3)}...${u.email.substring(u.email.indexOf('@'))}` : 'missing',
+      industry: u.industry
+    }));
+    detailedLog('Users to process:', userSummary);
 
     // Process each user
     const results = [];
@@ -242,8 +133,7 @@ serve(async (req) => {
       try {
         detailedLog(`Processing user: ${user.email}`, {
           industry: user.industry,
-          timezone: user.timezone,
-          deliveryTime: user.delivery_time
+          timezone: user.timezone
         });
 
         // Generate 3 content options
@@ -281,7 +171,7 @@ serve(async (req) => {
         // Prepare content history payload
         const contentHistoryPayload = {
           email: user.email,
-          user_id: user.user_id, // Assuming user_id is already in the user_industry_preferences table
+          user_id: user.user_id, // Assuming user_id is in the data from SQL
           industry: user.industry,
           template: user.template,
           content: contentOptions[0].content,
