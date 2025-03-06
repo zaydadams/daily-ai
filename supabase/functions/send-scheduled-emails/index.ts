@@ -52,16 +52,20 @@ serve(async (req) => {
         throw new Error(`Failed to fetch users: ${fetchError.message}`);
       }
       
+      console.log(`Found ${allUsers.length} total users with preferences`);
+      
       // Filter users based on their delivery time preference
       const now = new Date();
       
       usersToProcess = allUsers.filter(user => {
         // Skip users who have auto-generate disabled
         if (!user.auto_generate) {
+          console.log(`Skipping user ${user.email} - auto-generate is disabled`);
           return false;
         }
         
         if (!user.delivery_time || !user.timezone) {
+          console.log(`Skipping user ${user.email} - missing delivery time or timezone`);
           return false;
         }
         
@@ -113,10 +117,10 @@ serve(async (req) => {
           const today = format(new Date(), 'yyyy-MM-dd');
           
           const { data: existingEmails, error: emailCheckError } = await supabase
-            .from('sent_emails')
+            .from('content_history')
             .select('*')
             .eq('email', user.email)
-            .gte('created_at', today);
+            .gte('sent_at', today);
             
           if (emailCheckError) {
             console.error(`Error checking sent emails for ${user.email}:`, emailCheckError);
@@ -139,14 +143,15 @@ serve(async (req) => {
         // Send the email using Resend
         await sendEmail(user.email, `Your ${user.industry} Industry Update - 3 Content Options`, emailContent);
         
-        // Record the sent email
+        // Record the sent email in content_history
         const { error: recordError } = await supabase
-          .from('sent_emails')
+          .from('content_history')
           .insert({
             email: user.email,
             industry: user.industry,
-            content_snippet: contentOptions[0].snippet,
-            template: user.template
+            content: contentOptions[0].content,
+            template: user.template,
+            tone_name: user.tone_name
           });
           
         if (recordError) {
