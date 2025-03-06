@@ -25,6 +25,7 @@ function detailedLog(message: string, data?: any) {
 
 // Parse delivery time (handle HH:MM:SS format)
 function parseDeliveryTime(timeString: string) {
+  // Split the time and take only hours and minutes
   const [hours, minutes] = timeString.split(':').map(Number);
   return { hours, minutes };
 }
@@ -32,16 +33,19 @@ function parseDeliveryTime(timeString: string) {
 // Determine if it's time to send email for a user
 function isTimeToSendEmail(user) {
   try {
+    // Skip if auto-generate is disabled
     if (!user.auto_generate) {
       detailedLog(`Skipping ${user.email} - auto-generate disabled`);
       return false;
     }
+
+    // Validate delivery time and timezone
     if (!user.delivery_time || !user.timezone) {
       detailedLog(`Skipping ${user.email} - missing delivery time or timezone`);
       return false;
     }
 
-    // Parse user's desired delivery time
+    // Parse delivery time
     const { hours: targetHour, minutes: targetMinute } = parseDeliveryTime(user.delivery_time);
 
     // Get current time in the user's timezone
@@ -53,9 +57,14 @@ function isTimeToSendEmail(user) {
       hour12: false
     }).formatToParts(now);
 
-    const currentHour = parseInt(userLocalTime.find(part => part.type === 'hour').value);
-    const currentMinute = parseInt(userLocalTime.find(part => part.type === 'minute').value);
+    // Extract hour and minute
+    const hourPart = userLocalTime.find(part => part.type === 'hour');
+    const minutePart = userLocalTime.find(part => part.type === 'minute');
 
+    const currentHour = parseInt(hourPart.value);
+    const currentMinute = parseInt(minutePart.value);
+
+    // Detailed logging for debugging
     detailedLog(`Email timing check for ${user.email}`, {
       timezone: user.timezone,
       originalDeliveryTime: user.delivery_time,
@@ -65,7 +74,11 @@ function isTimeToSendEmail(user) {
       currentMinute
     });
 
-    return currentHour === targetHour && currentMinute === targetMinute;
+    // Check if current time exactly matches delivery time
+    const hourMatch = currentHour === targetHour;
+    const minuteMatch = currentMinute === targetMinute;
+
+    return hourMatch && minuteMatch;
   } catch (error) {
     detailedLog(`Time check error for ${user.email}`, error);
     return false;
@@ -107,16 +120,18 @@ async function generateContent(industry, toneName = 'professional', temperature 
     const json = await response.json();
     const generatedText = json.choices[0].message.content.trim();
     
-    // Extract title and content
+    // Extract a title and content
     const lines = generatedText.split('\n').filter(line => line.trim());
     let title = lines[0];
     let content = lines.slice(1).join('\n');
     
+    // If the first line doesn't look like a title, generate one
     if (title.length > 100 || !title.trim()) {
       title = `${industry} Industry Insight`;
       content = generatedText;
     }
     
+    // Clean up title if it has markdown-style headers
     title = title.replace(/^#+\s+/, '').replace(/^\*\*|\*\*$/g, '');
 
     return {
@@ -132,6 +147,7 @@ async function generateContent(industry, toneName = 'professional', temperature 
 
 // Main serve function for scheduled emails
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -139,6 +155,7 @@ serve(async (req) => {
   try {
     detailedLog('Starting scheduled email process');
 
+    // Fetch all users with preferences
     const { data: users, error: fetchError } = await supabase
       .from('user_industry_preferences')
       .select('*');
@@ -149,9 +166,12 @@ serve(async (req) => {
 
     detailedLog(`Fetched ${users.length} total users`);
 
+    // Filter users ready to receive emails
     const usersToProcess = users.filter(isTimeToSendEmail);
+
     detailedLog(`${usersToProcess.length} users ready to receive emails`);
 
+    // Process each user
     for (const user of usersToProcess) {
       try {
         detailedLog(`Processing user: ${user.email}`, {
@@ -178,37 +198,21 @@ serve(async (req) => {
           user.template
         );
 
-        // *** Compute the scheduled send time ***
-        // Get current time in Johannesburg timezone
-        const nowJHBString = new Date().toLocaleString("en-US", { timeZone: "Africa/Johannesburg" });
-        const nowJHB = new Date(nowJHBString);
-        // Create a date set to today at 15:05 in Johannesburg time
-        const scheduledTimeJHB = new Date(nowJHB);
-        scheduledTimeJHB.setHours(15, 5, 0, 0);
-        // If current time in Johannesburg is already past 15:05, schedule for tomorrow
-        if (nowJHB > scheduledTimeJHB) {
-          scheduledTimeJHB.setDate(scheduledTimeJHB.getDate() + 1);
-        }
-        const testScheduledTime = scheduledTimeJHB.toISOString();
-
-        detailedLog(`Scheduling email for ${user.email} at ${testScheduledTime} (Johannesburg time)`);
-
-        // Send email with scheduled time using Resend's send_at field
+        // Send email
         const response = await resend.emails.send({
           from: 'Writer Expert <shaun@writer.expert>',
           to: [user.email],
           subject: `Your ${user.industry} Content Update - 3 Content Options`,
           html: htmlContent,
-          reply_to: "shaun@writer.expert",
-          send_at: testScheduledTime
+          reply_to: "shaun@writer.expert"
         });
 
-        detailedLog(`Email scheduled successfully for ${user.email}`, response);
+        detailedLog(`Email sent successfully to ${user.email}`, response);
 
         // Prepare content history payload
         const contentHistoryPayload = {
           email: user.email,
-          user_id: user.user_id,
+          user_id: user.user_id, // Assuming user_id is already in the user_industry_preferences table
           industry: user.industry,
           template: user.template,
           content: contentOptions[0].content,
@@ -216,6 +220,7 @@ serve(async (req) => {
           tone_name: user.tone_name
         };
 
+        // Insert content history
         const { error: historyError, data: insertedData } = await supabase
           .from('content_history')
           .insert(contentHistoryPayload);
@@ -233,15 +238,33 @@ serve(async (req) => {
       }
     }
 
+    // Return success response
     return new Response(
-      JSON.stringify({ success: true, processed: usersToProcess.length }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ 
+        success: true, 
+        processed: usersToProcess.length 
+      }),
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
     );
   } catch (globalError) {
     detailedLog('Global error in scheduled emails', globalError);
+
     return new Response(
-      JSON.stringify({ error: globalError.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ 
+        error: globalError.message 
+      }),
+      { 
+        status: 500, 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
     );
   }
 });
@@ -272,8 +295,6 @@ function formatContentAsHtml(contentOptions, industry, template) {
           <p>${content.content}</p>
         </div>
       `).join('')}
-      
-      <p>Best regards,<br/>Your Content Team</p>
     </body>
     </html>
   `;
