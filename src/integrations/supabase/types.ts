@@ -50,6 +50,27 @@ export type Database = {
           },
         ]
       }
+      debug_logs: {
+        Row: {
+          created_at: string | null
+          data: Json | null
+          id: number
+          message: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          data?: Json | null
+          id?: number
+          message?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          data?: Json | null
+          id?: number
+          message?: string | null
+        }
+        Relationships: []
+      }
       scheduled_email_logs: {
         Row: {
           created_at: string | null
