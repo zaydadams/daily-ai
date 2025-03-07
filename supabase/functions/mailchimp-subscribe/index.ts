@@ -41,14 +41,22 @@ serve(async (req) => {
     if (sendNow) {
       console.log('Sending email immediately to:', recipientEmail);
       
-      // Generate 3 distinct content options with different angles
+      // Generate an array of unique formats to ensure each piece of content has a different format
+      const usedFormats = [];
+      const getUniqueFormat = () => {
+        const format = getRandomFormat(usedFormats);
+        usedFormats.push(format);
+        return format;
+      };
+      
+      // Generate 3 distinct content options with different angles and formats
       const contentOptions = await Promise.all([
-        generateContent(industry, "current trends", template, toneName, temperature),
-        generateContent(industry, "practical tips", template, toneName, temperature + 0.1), // Slightly higher temperature for variation
-        generateContent(industry, "success stories", template, toneName, temperature - 0.1)  // Slightly lower temperature for variation
+        generateContent(industry, "current trends", template, toneName, temperature, getUniqueFormat()),
+        generateContent(industry, "practical tips", template, toneName, temperature + 0.1, getUniqueFormat()), // Slightly higher temperature for variation
+        generateContent(industry, "success stories", template, toneName, temperature - 0.1, getUniqueFormat())  // Slightly lower temperature for variation
       ]);
       
-      console.log('Content options generated:', contentOptions.map(c => c.substring(0, 50) + '...'));
+      console.log('Content options generated with formats:', contentOptions.map(c => c.format));
       
       // Send the email with the verified sender email and the three content options
       const htmlContent = formatContentAsHtml(contentOptions, industry, template);
@@ -88,7 +96,7 @@ serve(async (req) => {
           email: recipientEmail,
           industry: industry,
           template: template,
-          content: contentOptions[0],
+          content: contentOptions[0].content,
           sent_at: new Date().toISOString(),
           tone_name: toneName
         });
@@ -104,7 +112,7 @@ serve(async (req) => {
         success: true, 
         email: emailResponse,
         message: `Email sent successfully to ${recipientEmail}`,
-        emailContent: contentOptions[0].substring(0, 300) + "..." // Return a preview of content for verification
+        emailContent: contentOptions[0].content.substring(0, 300) + "..." // Return a preview of content for verification
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
@@ -131,23 +139,39 @@ serve(async (req) => {
   }
 });
 
+// Get a random format that's different from the provided formats
+function getRandomFormat(excludeFormats = []) {
+  const allFormats = ["bullet-points", "numbered-list", "tips-format", "paragraph-format"];
+  const availableFormats = allFormats.filter(format => !excludeFormats.includes(format));
+  
+  // If all formats are excluded (shouldn't happen), reset and use any format
+  if (availableFormats.length === 0) {
+    return allFormats[Math.floor(Math.random() * allFormats.length)];
+  }
+  
+  return availableFormats[Math.floor(Math.random() * availableFormats.length)];
+}
+
 // Generate content using OpenAI based on industry, template, and specific theme
-async function generateContent(industry: string, contentTheme: string, template: string, toneName = 'professional', temperature = 0.7) {
-  console.log(`Generating ${contentTheme} content for: ${industry}, ${template}, tone: ${toneName}, temp: ${temperature}`);
+async function generateContent(industry, contentTheme, template, toneName = 'professional', temperature = 0.7, contentFormat = null) {
+  console.log(`Generating ${contentTheme} content for: ${industry}, ${template}, tone: ${toneName}, temp: ${temperature}, format: ${contentFormat}`);
   
   // For immediate testing, just return sample content
   if (!industry || industry.trim() === '') {
-    return `This is sample content for a generic industry. Please select a specific industry for better content.`;
+    return {
+      title: "Sample Content",
+      content: `This is sample content for a generic industry. Please select a specific industry for better content.`,
+      format: contentFormat || "bullet-points"
+    };
   }
   
-  // Parse template to get format and style
-  let format = template;
+  // Parse template to get style
   let style = "x-style";
   if (template.includes("-style-")) {
-    [format, style] = template.split("-style-");
+    [, style] = template.split("-style-");
   }
   
-  const formatPrompt = getFormatPrompt(format);
+  const formatPrompt = getFormatPrompt(contentFormat);
   const stylePrompt = getStylePrompt(style);
   const tonePrompt = getTonePrompt(toneName);
   
@@ -186,21 +210,43 @@ async function generateContent(industry: string, contentTheme: string, template:
     
     if (!data.choices || !data.choices[0]) {
       console.error('Unexpected OpenAI response:', data);
-      return getDefaultContent(industry, contentTheme);
+      return getDefaultContent(industry, contentTheme, contentFormat);
     }
     
-    return data.choices[0].message.content;
+    const content = data.choices[0].message.content;
+    const lines = content.split('\n').filter(line => line.trim());
+    let title = lines[0];
+    let mainContent = lines.slice(1).join('\n');
+    
+    // If the first line doesn't look like a title, generate one
+    if (title.length > 100 || !title.trim()) {
+      title = `${industry} Industry Insight: ${contentTheme}`;
+      mainContent = content;
+    }
+    
+    // Clean up title if it has markdown-style headers
+    title = title.replace(/^#+\s+/, '').replace(/^\*\*|\*\*$/g, '');
+    
+    return {
+      title,
+      content: mainContent,
+      format: contentFormat // Store the format used
+    };
   } catch (error) {
     console.error('Error calling OpenAI:', error);
     // Return a default sample content for testing if OpenAI fails
-    return getDefaultContent(industry, contentTheme);
+    return getDefaultContent(industry, contentTheme, contentFormat);
   }
 }
 
 // Get default content in case of failure
-function getDefaultContent(industry: string, contentTheme: string) {
+function getDefaultContent(industry, contentTheme, format) {
+  let content;
+  let title;
+  
   if (contentTheme === "current trends") {
-    return `Current Trends in ${industry}:
+    title = `Current Trends in ${industry}`;
+    content = `Current Trends in ${industry}:
     
     • AI integration is transforming how companies approach customer service
     • Remote work has created new opportunities for talent acquisition
@@ -210,7 +256,8 @@ function getDefaultContent(industry: string, contentTheme: string) {
     
     Staying ahead of these trends will position your business for long-term success.`;
   } else if (contentTheme === "practical tips") {
-    return `Practical Tips for ${industry} Success:
+    title = `Practical Tips for ${industry} Success`;
+    content = `Practical Tips for ${industry} Success:
     
     1. Invest in employee upskilling to adapt to technological changes
     2. Implement data-driven decision making across all departments
@@ -220,7 +267,8 @@ function getDefaultContent(industry: string, contentTheme: string) {
     
     These actionable strategies can help you navigate the competitive landscape.`;
   } else {
-    return `Success Stories in ${industry}:
+    title = `Success Stories in ${industry}`;
+    content = `Success Stories in ${industry}:
     
     • Company X increased conversion rates by 45% through personalized customer journeys
     • Startup Y reduced operational costs by 30% using automation tools
@@ -230,10 +278,16 @@ function getDefaultContent(industry: string, contentTheme: string) {
     
     These real-world examples demonstrate that innovation and adaptation are key to success.`;
   }
+  
+  return {
+    title,
+    content,
+    format: format || "bullet-points" // Use provided format or default to bullet points
+  };
 }
 
 // Get format-specific prompts
-function getFormatPrompt(format: string) {
+function getFormatPrompt(format) {
   switch (format) {
     case "bullet-points":
       return "Structure the content as bullet points (•) with a strong headline, 5-7 clear bullet points, and a powerful conclusion. Each bullet point should be concise and impactful.";
@@ -241,13 +295,15 @@ function getFormatPrompt(format: string) {
       return "Format as a numbered list with a compelling headline, 5-7 numbered points, and a summary conclusion. Each point should be substantive and actionable.";
     case "tips-format":
       return "Structure as practical tips with a clear headline, a brief introduction, and 5-7 actionable checkpoints marked with ✓. Make each tip specific and immediately applicable.";
+    case "paragraph-format":
+      return "Format as a cohesive article with a headline, 3-4 paragraphs with clear topic sentences, and a conclusion. Use no bullet points or numbered lists, just flowing text.";
     default:
       return "Use bullet points or a numbered list format with a strong headline, 5-7 key points, and a powerful conclusion.";
   }
 }
 
 // Get style-specific prompts
-function getStylePrompt(style: string) {
+function getStylePrompt(style) {
   switch (style) {
     case "x-style":
       return "Keep it concise, direct, and impactful - suitable for Twitter/X.com. Be bold and thought-provoking.";
@@ -263,7 +319,7 @@ function getStylePrompt(style: string) {
 }
 
 // Get tone-specific prompts
-function getTonePrompt(tone: string) {
+function getTonePrompt(tone) {
   switch (tone) {
     case "professional":
       return "Write in a formal, authoritative, and precise manner using industry terminology appropriately. Be clear and objective.";
@@ -280,7 +336,7 @@ function getTonePrompt(tone: string) {
 }
 
 // Format content as HTML email with modern design and multiple content options
-function formatContentAsHtml(contentOptions: string[], industry: string, template: string) {
+function formatContentAsHtml(contentOptions: any[], industry: string, template: string) {
   const today = new Date();
   const formattedDate = today.toLocaleDateString('en-US', { 
     weekday: 'long', 
@@ -290,12 +346,9 @@ function formatContentAsHtml(contentOptions: string[], industry: string, templat
   });
   
   // Process each content option to ensure proper formatting
-  const formattedContentOptions = contentOptions.map(content => {
-    // Function to convert content to appropriate HTML based on template format
-    let format = "bullet-points";
-    if (template.includes("-style-")) {
-      [format] = template.split("-style-");
-    }
+  const formattedContentOptions = contentOptions.map(contentObj => {
+    const content = contentObj.content;
+    const format = contentObj.format;
     
     // Format content based on type
     if (format === "bullet-points" && !content.includes("<ul>")) {
@@ -305,9 +358,10 @@ function formatContentAsHtml(contentOptions: string[], industry: string, templat
       
       if (bulletItems.length > 0) {
         return {
-          title: lines[0].replace(/^[#\s]+/, ''), // First line as title, remove any markdown headers
+          title: contentObj.title,
           content: `<ul>${bulletItems.map(item => `<li>${item.replace(/^[•\-*\s]+/, '')}</li>`).join('')}</ul>`,
-          rawContent: content
+          rawContent: content,
+          format: format
         };
       }
     } else if (format === "numbered-list" && !content.includes("<ol>")) {
@@ -317,9 +371,36 @@ function formatContentAsHtml(contentOptions: string[], industry: string, templat
       
       if (numberedItems.length > 0) {
         return {
-          title: lines[0].replace(/^[#\s]+/, ''),
+          title: contentObj.title,
           content: `<ol>${numberedItems.map(item => `<li>${item.replace(/^\d+\.\s*/, '')}</li>`).join('')}</ol>`,
-          rawContent: content
+          rawContent: content,
+          format: format
+        };
+      }
+    } else if (format === "tips-format" && !content.includes("✓")) {
+      // Convert to tips format with checkmarks if not already formatted
+      const lines = content.split('\n').filter(line => line.trim());
+      const tipItems = lines.filter(line => line.trim().length > 0 && !line.trim().startsWith('#'));
+      
+      if (tipItems.length > 0) {
+        const tipsList = tipItems.map(item => `<p>✓ ${item.replace(/^[•\-*\d\.\s]+/, '')}</p>`).join('');
+        return {
+          title: contentObj.title,
+          content: tipsList,
+          rawContent: content,
+          format: format
+        };
+      }
+    } else if (format === "paragraph-format") {
+      // Format as paragraphs
+      const paragraphs = content.split('\n\n').filter(para => para.trim().length > 0);
+      
+      if (paragraphs.length > 0) {
+        return {
+          title: contentObj.title,
+          content: paragraphs.map(para => `<p>${para.trim()}</p>`).join(''),
+          rawContent: content,
+          format: format
         };
       }
     }
@@ -327,9 +408,10 @@ function formatContentAsHtml(contentOptions: string[], industry: string, templat
     // Default handling if no specific formatting detected
     const lines = content.split('\n').filter(line => line.trim());
     return {
-      title: lines[0].replace(/^[#\s]+/, ''),
+      title: contentObj.title,
       content: content.replace(/\n/g, '<br>'),
-      rawContent: content
+      rawContent: content,
+      format: format
     };
   });
 
@@ -404,6 +486,17 @@ function formatContentAsHtml(contentOptions: string[], industry: string, templat
           text-transform: uppercase;
           letter-spacing: 1px;
         }
+        .format-badge {
+          display: inline-block;
+          background-color: #2ecc71;
+          color: white;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          margin-left: 8px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
         p {
           margin: 0 0 15px;
           font-size: 16px;
@@ -461,14 +554,20 @@ function formatContentAsHtml(contentOptions: string[], industry: string, templat
         </div>
         
         <div class="content">
-          <p>Here are three content options for your ${industry} business. Each takes a different approach:</p>
+          <p>Here are three content options for your ${industry} business. Each takes a different approach and format:</p>
           
           ${formattedContentOptions.map((content, index) => {
             const optionLabels = ["Trends & Insights", "Practical Strategy", "Success Patterns"];
+            const formatLabels = {
+              "bullet-points": "Bullet Points",
+              "numbered-list": "Numbered List",
+              "tips-format": "Tips Format",
+              "paragraph-format": "Paragraphs"
+            };
             
             return `
               <div class="option">
-                <div class="option-label">Option ${index + 1}: ${optionLabels[index]}</div>
+                <div class="option-label">Option ${index + 1}: ${optionLabels[index]} <span class="format-badge">${formatLabels[content.format] || "Custom Format"}</span></div>
                 <h2>${content.title}</h2>
                 <div>${content.content}</div>
                 
@@ -477,7 +576,7 @@ function formatContentAsHtml(contentOptions: string[], industry: string, templat
             `;
           }).join('')}
           
-          <p>These insights are generated based on current industry trends and tailored to your preferences.</p>
+          <p>These insights are generated based on current industry trends and tailored to your preferences. Each uses a different format to help you find what works best for your audience.</p>
         </div>
         
         <div class="footer">

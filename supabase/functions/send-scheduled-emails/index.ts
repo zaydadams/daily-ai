@@ -36,9 +36,10 @@ async function detailedLog(message: string, data?: any) {
 }
 
 // Function to generate content using OpenAI based on industry, template, and specific theme
-async function generateContent(industry, contentTheme, template, toneName = 'professional', temperature = 0.7) {
+async function generateContent(industry, contentTheme, template, toneName = 'professional', temperature = 0.7, contentFormat = null) {
   try {
-    await detailedLog(`Generating ${contentTheme} content for: ${industry}, tone: ${toneName}, temp: ${temperature}`);
+    const formatToUse = contentFormat || getRandomFormat();
+    await detailedLog(`Generating ${contentTheme} content for: ${industry}, tone: ${toneName}, temp: ${temperature}, format: ${formatToUse}`);
     
     // For immediate testing, just return sample content if no industry
     if (!industry || industry.trim() === '') {
@@ -50,13 +51,12 @@ async function generateContent(industry, contentTheme, template, toneName = 'pro
     }
     
     // Parse template to get format and style
-    let format = template;
     let style = "x-style";
     if (template.includes("-style-")) {
-      [format, style] = template.split("-style-");
+      [, style] = template.split("-style-");
     }
     
-    const formatPrompt = getFormatPrompt(format);
+    const formatPrompt = getFormatPrompt(formatToUse);
     const stylePrompt = getStylePrompt(style);
     const tonePrompt = getTonePrompt(toneName);
     
@@ -113,12 +113,26 @@ async function generateContent(industry, contentTheme, template, toneName = 'pro
     return {
       title,
       content,
-      snippet: generatedText.substring(0, 300) + (generatedText.length > 300 ? '...' : '')
+      snippet: generatedText.substring(0, 300) + (generatedText.length > 300 ? '...' : ''),
+      format: formatToUse
     };
   } catch (error) {
     await detailedLog("Error generating content", error);
     return getDefaultContent(industry, contentTheme);
   }
+}
+
+// Get a random format that's different from the provided formats
+function getRandomFormat(excludeFormats = []) {
+  const allFormats = ["bullet-points", "numbered-list", "tips-format", "paragraph-format"];
+  const availableFormats = allFormats.filter(format => !excludeFormats.includes(format));
+  
+  // If all formats are excluded (shouldn't happen), reset and use any format
+  if (availableFormats.length === 0) {
+    return allFormats[Math.floor(Math.random() * allFormats.length)];
+  }
+  
+  return availableFormats[Math.floor(Math.random() * availableFormats.length)];
 }
 
 // Get default content in case of failure
@@ -161,7 +175,8 @@ function getDefaultContent(industry, contentTheme) {
   return {
     title: defaultTitle,
     content: defaultContent,
-    snippet: defaultContent.substring(0, 300) + '...'
+    snippet: defaultContent.substring(0, 300) + '...',
+    format: "bullet-points" // Default format
   };
 }
 
@@ -174,6 +189,8 @@ function getFormatPrompt(format) {
       return "Format as a numbered list with a compelling headline, 5-7 numbered points, and a summary conclusion. Each point should be substantive and actionable.";
     case "tips-format":
       return "Structure as practical tips with a clear headline, a brief introduction, and 5-7 actionable checkpoints marked with ✓. Make each tip specific and immediately applicable.";
+    case "paragraph-format":
+      return "Format as a cohesive article with a headline, 3-4 paragraphs with clear topic sentences, and a conclusion. Use no bullet points or numbered lists, just flowing text.";
     default:
       return "Use bullet points or a numbered list format with a strong headline, 5-7 key points, and a powerful conclusion.";
   }
@@ -246,32 +263,43 @@ serve(async (req) => {
           template: user.template
         });
 
-        // Generate 3 distinct content options with different angles
+        // Generate an array of unique formats to ensure each piece of content has a different format
+        const usedFormats = [];
+        const getUniqueFormat = () => {
+          const format = getRandomFormat(usedFormats);
+          usedFormats.push(format);
+          return format;
+        };
+
+        // Generate 3 distinct content options with different angles and formats
         const contentOptions = await Promise.all([
           generateContent(
             user.industry, 
             "current trends", 
             user.template, 
             user.tone_name || 'professional', 
-            user.temperature || 0.7
+            user.temperature || 0.7,
+            getUniqueFormat()
           ),
           generateContent(
             user.industry, 
             "practical tips", 
             user.template, 
             user.tone_name || 'professional', 
-            (user.temperature || 0.7) + 0.1 // Slightly higher temperature for variation
+            (user.temperature || 0.7) + 0.1, // Slightly higher temperature for variation
+            getUniqueFormat()
           ),
           generateContent(
             user.industry, 
             "success stories", 
             user.template, 
             user.tone_name || 'professional', 
-            (user.temperature || 0.7) - 0.1 // Slightly lower temperature for variation
+            (user.temperature || 0.7) - 0.1, // Slightly lower temperature for variation
+            getUniqueFormat()
           )
         ]);
 
-        // Format email content based on template
+        // Format email content based on template and the generated formats
         const htmlContent = formatContentAsHtml(
           contentOptions, 
           user.industry, 
@@ -398,12 +426,7 @@ function formatContentAsHtml(contentOptions, industry, template) {
   // Process each content option to ensure proper formatting
   const formattedContentOptions = contentOptions.map(contentObj => {
     const content = contentObj.content;
-    
-    // Function to convert content to appropriate HTML based on template format
-    let format = "bullet-points";
-    if (template.includes("-style-")) {
-      [format] = template.split("-style-");
-    }
+    const format = contentObj.format;
     
     // Format content based on type
     if (format === "bullet-points" && !content.includes("<ul>")) {
@@ -415,7 +438,8 @@ function formatContentAsHtml(contentOptions, industry, template) {
         return {
           title: contentObj.title,
           content: `<ul>${bulletItems.map(item => `<li>${item.replace(/^[•\-*\s]+/, '')}</li>`).join('')}</ul>`,
-          rawContent: content
+          rawContent: content,
+          format: format
         };
       }
     } else if (format === "numbered-list" && !content.includes("<ol>")) {
@@ -427,7 +451,34 @@ function formatContentAsHtml(contentOptions, industry, template) {
         return {
           title: contentObj.title,
           content: `<ol>${numberedItems.map(item => `<li>${item.replace(/^\d+\.\s*/, '')}</li>`).join('')}</ol>`,
-          rawContent: content
+          rawContent: content,
+          format: format
+        };
+      }
+    } else if (format === "tips-format" && !content.includes("✓")) {
+      // Convert to tips format with checkmarks if not already formatted
+      const lines = content.split('\n').filter(line => line.trim());
+      const tipItems = lines.filter(line => line.trim().length > 0 && !line.trim().startsWith('#'));
+      
+      if (tipItems.length > 0) {
+        const tipsList = tipItems.map(item => `<p>✓ ${item.replace(/^[•\-*\d\.\s]+/, '')}</p>`).join('');
+        return {
+          title: contentObj.title,
+          content: tipsList,
+          rawContent: content,
+          format: format
+        };
+      }
+    } else if (format === "paragraph-format") {
+      // Format as paragraphs
+      const paragraphs = content.split('\n\n').filter(para => para.trim().length > 0);
+      
+      if (paragraphs.length > 0) {
+        return {
+          title: contentObj.title,
+          content: paragraphs.map(para => `<p>${para.trim()}</p>`).join(''),
+          rawContent: content,
+          format: format
         };
       }
     }
@@ -436,7 +487,8 @@ function formatContentAsHtml(contentOptions, industry, template) {
     return {
       title: contentObj.title,
       content: content.replace(/\n/g, '<br>'),
-      rawContent: content
+      rawContent: content,
+      format: format
     };
   });
 
@@ -512,6 +564,17 @@ function formatContentAsHtml(contentOptions, industry, template) {
           text-transform: uppercase;
           letter-spacing: 1px;
         }
+        .format-badge {
+          display: inline-block;
+          background-color: #2ecc71;
+          color: white;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          margin-left: 8px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
         p {
           margin: 0 0 15px;
           font-size: 16px;
@@ -569,14 +632,20 @@ function formatContentAsHtml(contentOptions, industry, template) {
         </div>
         
         <div class="content">
-          <p>Here are three content options for your ${industry} business. Each takes a different approach:</p>
+          <p>Here are three content options for your ${industry} business. Each takes a different approach and format:</p>
           
           ${formattedContentOptions.map((content, index) => {
             const optionLabels = ["Trends & Insights", "Practical Strategy", "Success Patterns"];
+            const formatLabels = {
+              "bullet-points": "Bullet Points",
+              "numbered-list": "Numbered List",
+              "tips-format": "Tips Format",
+              "paragraph-format": "Paragraphs"
+            };
             
             return `
               <div class="option">
-                <div class="option-label">Option ${index + 1}: ${optionLabels[index]}</div>
+                <div class="option-label">Option ${index + 1}: ${optionLabels[index]} <span class="format-badge">${formatLabels[content.format] || "Custom Format"}</span></div>
                 <h2>${content.title}</h2>
                 <div>${content.content}</div>
                 
@@ -585,7 +654,7 @@ function formatContentAsHtml(contentOptions, industry, template) {
             `;
           }).join('')}
           
-          <p>These insights are generated based on current industry trends and tailored to your preferences.</p>
+          <p>These insights are generated based on current industry trends and tailored to your preferences. Each uses a different format to help you find what works best for your audience.</p>
         </div>
         
         <div class="footer">
